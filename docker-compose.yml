@@ -24,7 +24,7 @@ services:
       RABBITMQ_DEFAULT_PASS: guest
 
   minio:
-    image: minio/minio
+    image: docker.io/pgsty/silo:RELEASE.2026-09-16T00-00-00Z
     container_name: minio_s3
     ports:
       - "9000:9000"
