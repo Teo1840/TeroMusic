@@ -1,0 +1,18 @@
+{
+  "specversion": "1.0",
+  "id": "0b6f6a52-7c1e-4d3a-9f0e-2a1b3c4d5e01",
+  "source": "/services/user",
+  "type": "user.registered.v1",
+  "time": "2026-10-27T12:00:00Z",
+  "subject": "user/5a1e2f30-8c4b-4f9d-a7e6-1b2c3d4e5f60",
+  "datacontenttype": "application/json",
+  "dataschema": "contracts/events/user.registered.v1.schema.json",
+  "correlationid": "req-3f9a1c",
+  "data": {
+    "user_id": "5a1e2f30-8c4b-4f9d-a7e6-1b2c3d4e5f60",
+    "email": "ana@example.com",
+    "username": "ana_music",
+    "display_name": "Ana",
+    "locale": "es-UY"
+  }
+}

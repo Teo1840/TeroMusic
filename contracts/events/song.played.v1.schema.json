@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "contracts/events/song.played.v1.schema.json",
+  "title": "song.played.v1",
+  "description": "Un usuario reprodujo una canción. Se publica cuando termina la reproducción o la abandona (no en cada chunk). Publica: audio_service. Consume: metrics_service.",
+  "type": "object",
+  "required": ["song_id", "user_id", "started_at", "listened_sec"],
+  "additionalProperties": false,
+  "properties": {
+    "song_id": { "type": "string", "format": "uuid" },
+    "user_id": { "type": "string", "format": "uuid" },
+    "started_at": { "type": "string", "format": "date-time", "pattern": "Z$" },
+    "listened_sec": { "type": "number", "minimum": 0 },
+    "completed": { "description": "true si escuchó la canción completa.", "type": "boolean" },
+    "bitrate_kbps": { "type": "integer", "minimum": 32, "maximum": 512 },
+    "client": { "type": "string", "enum": ["web", "mobile"] },
+    "room_id": { "description": "Presente si se reprodujo dentro de una sala en vivo.", "type": "string", "format": "uuid" }
+  }
+}
