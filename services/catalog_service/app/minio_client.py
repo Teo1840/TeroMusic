@@ -12,17 +12,18 @@ client = Minio(
 )
 
 
-def ensure_buckets() -> None:
-    """Crea los buckets si no existen (se llama al arrancar)."""
-    for bucket in (settings.raw_bucket, settings.processed_bucket):
-        if not client.bucket_exists(bucket):
-            client.make_bucket(bucket)
+def ensure_bucket() -> None:
+    """Crea el bucket del contrato si no existe (se llama al arrancar)."""
+    if not client.bucket_exists(settings.minio_bucket):
+        client.make_bucket(settings.minio_bucket)
 
 
-def _put(bucket: str, key: str, fileobj, size: int, content_type: str) -> None:
-    client.put_object(bucket, key, fileobj, length=size, content_type=content_type)
+def _put(key: str, fileobj, size: int, content_type: str) -> None:
+    client.put_object(
+        settings.minio_bucket, key, fileobj, length=size, content_type=content_type
+    )
 
 
-async def upload_fileobj(bucket: str, key: str, fileobj, size: int, content_type: str):
+async def upload_fileobj(key: str, fileobj, size: int, content_type: str):
     # El SDK de MinIO es síncrono: lo corremos en un hilo para no bloquear FastAPI.
-    await asyncio.to_thread(_put, bucket, key, fileobj, size, content_type)
+    await asyncio.to_thread(_put, key, fileobj, size, content_type)
