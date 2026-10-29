@@ -55,5 +55,7 @@ datos, modificar los usuarios desde el servicio correspondiente.
 Este Compose levanta la infraestructura compartida y metrics_service.
 La API de metricas esta en http://localhost:8004/docs. Su contrato de eventos
 y pruebas se documentan en services/metrics_service/README.md.
+El streaming (audio_service) esta en http://localhost:8003/docs y publica
+`song.played` para metricas; ver services/audio_service/README.md.
 El siguiente bloque pendiente es notification_service
 (historial y GET /notifications/user/{user_id}).

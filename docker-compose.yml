@@ -91,6 +91,32 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s
+  audio_service:
+    build: ./services/audio_service
+    restart: unless-stopped
+    environment:
+      MINIO_ENDPOINT: minio:9000
+      MINIO_USER: ${MINIO_USER:?Definir MINIO_USER en .env}
+      MINIO_PASS: ${MINIO_PASS:?Definir MINIO_PASS en .env}
+      RAW_BUCKET: raw-audio
+      PROCESSED_BUCKET: processed-audio
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: ${RABBITMQ_USER:?Definir RABBITMQ_USER en .env}
+      RABBITMQ_PASS: ${RABBITMQ_PASS:?Definir RABBITMQ_PASS en .env}
+      METRICS_URL: http://metrics_service:8000
+    ports:
+      - "127.0.0.1:${AUDIO_PORT:-8003}:8000"
+    depends_on:
+      minio:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 volumes:
   postgres_data:
   rabbitmq_data:
