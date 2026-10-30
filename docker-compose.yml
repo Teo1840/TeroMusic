@@ -1,13 +1,14 @@
 services:
   postgres:
     image: postgres:15-alpine
+    container_name: postgres_db
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:?Definir POSTGRES_USER en .env}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Definir POSTGRES_PASSWORD en .env}
-      POSTGRES_DB: ${POSTGRES_DB:?Definir POSTGRES_DB en .env}
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-adminpassword}
+      POSTGRES_DB: ${POSTGRES_DB:-streaming_db}
     ports:
-      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -15,13 +16,15 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 10s
   rabbitmq:
     image: rabbitmq:3-management-alpine
+    container_name: rabbitmq_broker
     restart: unless-stopped
     environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?Definir RABBITMQ_USER en .env}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:?Definir RABBITMQ_PASS en .env}
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-guest}
+      # Permite conexiones guest entre contenedores en este entorno local.
+      RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: '-rabbit loopback_users []'
     ports:
       - "127.0.0.1:5672:5672"
       - "127.0.0.1:15672:15672"
@@ -34,13 +37,12 @@ services:
       retries: 10
       start_period: 20s
   minio:
-    image: teromusic/minio:RELEASE.2025-10-15T17-29-55Z
-    build:
-      context: ./infra/minio
+    image: docker.io/pgsty/silo:RELEASE.2026-09-16T00-00-00Z
+    container_name: minio_s3
     restart: unless-stopped
     environment:
-      MINIO_ROOT_USER: ${MINIO_USER:?Definir MINIO_USER en .env}
-      MINIO_ROOT_PASSWORD: ${MINIO_PASS:?Definir MINIO_PASS en .env}
+      MINIO_ROOT_USER: ${MINIO_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_PASS:-minioadminpassword}
     command: server /data --console-address ":9001"
     ports:
       - "127.0.0.1:9000:9000"
@@ -52,9 +54,9 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 10s
   redis:
     image: redis:7-alpine
+    container_name: redis_cache
     restart: unless-stopped
     command: redis-server --appendonly yes
     ports:
@@ -67,17 +69,19 @@ services:
       timeout: 5s
       retries: 5
   metrics_service:
-    build: ./services/metrics_service
+    build:
+      context: .
+      dockerfile: services/metrics_service/Dockerfile
     restart: unless-stopped
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
-      POSTGRES_USER: ${POSTGRES_USER:?Definir POSTGRES_USER en .env}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Definir POSTGRES_PASSWORD en .env}
-      POSTGRES_DB: ${POSTGRES_DB:?Definir POSTGRES_DB en .env}
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-adminpassword}
+      POSTGRES_DB: ${POSTGRES_DB:-streaming_db}
       RABBITMQ_HOST: rabbitmq
-      RABBITMQ_USER: ${RABBITMQ_USER:?Definir RABBITMQ_USER en .env}
-      RABBITMQ_PASS: ${RABBITMQ_PASS:?Definir RABBITMQ_PASS en .env}
+      RABBITMQ_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_PASS: ${RABBITMQ_PASS:-guest}
     ports:
       - "127.0.0.1:${METRICS_PORT:-8004}:8000"
     depends_on:
