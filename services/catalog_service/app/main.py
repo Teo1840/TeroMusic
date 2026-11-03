@@ -1,13 +1,14 @@
 import asyncio
 import hashlib
+import logging
 import uuid
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from . import minio_client, publisher
+from . import consumer, minio_client, publisher
 from .config import settings
 from .database import Base, engine, get_session
 from .models import Song, SongStatus
@@ -20,10 +21,17 @@ async def lifespan(app: FastAPI):
         await conn.run_sync(Base.metadata.create_all)
     minio_client.ensure_bucket()
     await publisher.connect()
+    consumer_conn, consumer_task = await consumer.start()
     yield
+    consumer_task.cancel()
+    with suppress(asyncio.CancelledError):
+        await consumer_task
+    await consumer_conn.close()
     await publisher.close()
     await engine.dispose()
 
+
+logging.basicConfig(level=logging.INFO)
 
 app = FastAPI(title="catalog_service", lifespan=lifespan)
 
@@ -115,6 +123,26 @@ async def list_songs(session: AsyncSession = Depends(get_session)):
             "artist_id": str(s.artist_id),
             "duration": s.duration,
             "file_uri": s.file_uri,
+            "renditions": s.renditions,
         }
         for s in result.scalars()
     ]
+
+
+@app.get("/songs/{song_id}")
+async def get_song(song_id: uuid.UUID, session: AsyncSession = Depends(get_session)):
+    """Estado de una canción (para saber si el worker ya terminó)."""
+    song = await session.get(Song, song_id)
+    if song is None:
+        raise HTTPException(404, "Canción no encontrada")
+    return {
+        "id": str(song.id),
+        "title": song.title,
+        "artist_id": str(song.artist_id),
+        "status": song.status.value,
+        "duration": song.duration,
+        "file_uri": song.file_uri,
+        "renditions": song.renditions,
+        "error_code": song.error_code,
+        "error_message": song.error_message,
+    }
