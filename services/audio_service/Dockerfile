@@ -1,11 +1,13 @@
-FROM python:3.12-slim
-ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+# Se construye desde la raiz del repo (ver docker-compose.yml) para copiar contracts/.
+FROM node:22-alpine
+ENV NODE_ENV=production
 WORKDIR /app
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-RUN useradd --create-home app
-COPY app ./app
-COPY tests ./tests
-USER app
+COPY services/audio_service/package.json services/audio_service/package-lock.json ./
+# Incluye devDependencies (ajv) para poder correr los tests dentro del contenedor.
+RUN npm ci --include=dev && npm cache clean --force
+COPY services/audio_service/src ./src
+COPY services/audio_service/test ./test
+COPY contracts ./contracts
+USER node
 EXPOSE 8000
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["node", "src/index.js"]

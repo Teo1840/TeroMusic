@@ -1,79 +1,95 @@
-# Servicio de streaming de audio
+# audio_service: streaming de audio con cache
 
-Sirve el audio guardado en MinIO con soporte de `Range` (para adelantar y
-retroceder) y publica `song.played` en RabbitMQ para metrics_service.
-FastAPI + SDK de MinIO + aio-pika. No usa PostgreSQL ni Redis.
+Node.js 22 + Express. Sirve el audio procesado desde MinIO por fragmentos
+(HTTP 206), los cachea en Redis (cache-aside) y publica `song.played.v1` en
+RabbitMQ al iniciar cada reproduccion.
 
 ## Inicio
 
-Desde la raiz del repositorio, con `.env` configurado:
+Desde la raiz del repositorio:
 
 ```powershell
 docker compose up -d --build --wait audio_service metrics_service
 docker compose logs --tail 100 audio_service
 ```
 
-API: http://localhost:8003. Swagger: http://localhost:8003/docs.
-`AUDIO_PORT` cambia el puerto local; dentro de Docker se usa
-`http://audio_service:8000`.
+API en http://localhost:8003 (`AUDIO_PORT` cambia el puerto local). Dentro
+de Docker: `http://audio_service:8000`.
 
-## Endpoints
+## GET /audio/stream/{song_id}
 
-`GET /stream/{song_id}?user_id=<id>` (o header `X-User-Id: <id>`)
-
-- Busca `processed-audio/{song_id}.*`. Si no existe, usa el original
-  `raw-audio/{song_id}.*` que sube catalog_service. Asi funciona antes de que
-  exista el worker de ingesta.
-- Sin `Range` responde 200 con el archivo entero. Con `Range: bytes=a-b`
-  responde 206 con `Content-Range`. Un rango fuera del archivo devuelve 416.
-- 404 si la cancion no esta en ninguno de los dos buckets. 400 si falta el usuario.
-- `song_id`: letras, numeros, `-` y `_`, hasta 128 caracteres (los UUID del catalogo).
-
-Se acepta `?user_id=` porque `<audio src="...">` no puede enviar headers.
-Es temporal: cuando exista el gateway, el usuario saldra del JWT.
-
-`GET /health` devuelve 200 si MinIO y RabbitMQ responden, 503 si no.
-
-## Evento publicado
-
-Sigue el contrato de `services/metrics_service/README.md`:
-
-- Exchange `domain_events` (topic, durable), routing key `song.played`.
-- JSON UTF-8, `application/json`, mensaje persistente, con confirmacion del broker.
-- `message_id` AMQP igual a `event_id`.
-
-```json
-{
-  "event_id": "49b9e58c-c16d-4eb6-aa68-5c18d812020b",
-  "song_id": "c3d4e5f6-1a2b-4c3d-8e9f-0a1b2c3d4e5f",
-  "user_id": "user-456",
-  "timestamp": "2026-10-26T14:00:00Z"
-}
+```
+GET /audio/stream/c3d4e5f6-1a2b-4c3d-8e9f-0a1b2c3d4e5f?user_id=<uuid>
+Range: bytes=0-1048575
 ```
 
-Cuando se publica: una vez por reproduccion, en la peticion que empieza en el
-byte 0 (sin `Range` o `bytes=0-...`). Los rangos intermedios (adelantar) no
-cuentan. Tampoco el sondeo `bytes=0-1` que hace Safari antes de reproducir.
+```
+HTTP/1.1 206 Partial Content
+Content-Type: audio/mpeg
+Content-Range: bytes 0-1048575/3145728
+Content-Length: 1048576
+Accept-Ranges: bytes
+X-Cache: MISS            (HIT si salio de Redis, PARTIAL si fue mixto)
+```
 
-La publicacion corre en segundo plano para no retrasar el audio. Si falla, se
-reintenta 3 veces con el mismo `event_id` (metrics descarta duplicados) y
-despues se registra en el log; el audio se sirve igual.
+- `song_id` y el usuario deben ser UUID (lo exige el contrato). El usuario va
+  en el header `X-User-Id` o en `?user_id=`; `<audio src>` no puede mandar
+  headers. Cuando exista el gateway saldra del JWT.
+- Archivo leido: bucket `processed-audio`, clave `{song_id}/128.mp3`
+  (`PROCESSED_BUCKET` y `AUDIO_KEY_TEMPLATE`).
+- Calculo del rango (`src/range.js`):
+  - `bytes=a-b`: exactamente de a hasta b (tope de 8 MiB por respuesta).
+  - `bytes=a-` o sin header: desde a hasta el final de su fragmento de 1 MiB.
+  - `bytes=-n`: los ultimos n bytes.
+  - Fuera del archivo: 416 con `Content-Range: bytes */<tamano>`.
+- Errores: 400 (ids invalidos), 404 (no existe), 503 (MinIO caido).
 
-## Prueba de integracion
+## Cache (cache-aside con Redis)
 
-Con audio_service y metrics_service levantados:
+El archivo se divide en fragmentos de `CHUNK_SIZE` (1 MiB). Para cada
+fragmento que toca el rango pedido:
+
+1. Busca `song:{id}:chunk:{num}` en Redis.
+2. Hit: lo usa directo.
+3. Miss: lo lee de MinIO (`getPartialObject`), lo guarda en Redis con
+   `EX CACHE_TTL_SEC` (3600 s) sin esperar, y lo entrega.
+
+Luego recorta al rango exacto. Tambien cachea `song:{id}:meta` (tamano y
+tipo) para no consultar MinIO en cada peticion. Si Redis se cae, el servicio
+sigue sirviendo desde MinIO y `/health` responde `degraded`.
+
+## Evento song.played.v1
+
+Fire-and-forget: se agenda con `setImmediate` y la respuesta no lo espera.
+Se publica cuando la peticion empieza en el byte 0 (inicio de reproduccion).
+Adelantar no cuenta, ni la sonda `bytes=0-1` de Safari.
+
+- Exchange `musicapp.events` (topic, durable), routing key `song.played.v1`.
+- Sobre CloudEvents de `contracts/`, mensaje persistente con confirmacion.
+- `data`: `song_id`, `user_id`, `started_at` (momento de inicio) y
+  `listened_sec: 0` (todavia no se escucho nada). metrics_service lo cuenta.
+- Hasta 3 reintentos con el mismo `id` (metrics descarta duplicados).
+
+## Pruebas
 
 ```powershell
-docker compose exec -T audio_service python -m tests.integration
+# En la maquina (sin Docker): rangos y validacion del evento contra contracts/
+cd services/audio_service; npm install; npm run test:unit
+
+# Todo, dentro del contenedor (necesita metrics_service levantado)
+docker compose exec -T audio_service npm test
 ```
 
-Sube un WAV de prueba a `raw-audio` (crea el bucket si no existe), prueba
-200, 206, 404 y 416, y comprueba en metrics que se conto exactamente una
-reproduccion. Borra el WAV al terminar; el contador de prueba queda en metrics
-con un `song_id` que empieza por `integration-audio-`.
+La integracion sube 2.5 MiB de prueba a `processed-audio`, verifica 206,
+MISS/HIT/PARTIAL, TTL en Redis, 416/404/400 y que metrics cuente 2
+reproducciones. Borra el archivo y las claves al terminar.
 
-## Pendiente
+## Pendiente con el equipo
 
-- Autenticacion con JWT a traves del gateway.
-- `contracts/` (en main) describe otro formato (`musicapp.events`, CloudEvents).
-  Hay que acordar en el equipo cual queda y actualizar el que no.
+- worker_ingesta guarda en el bucket `audio` con prefijo `processed/`. Este
+  servicio lee `processed-audio` como pide la consigna. Para alinear basta
+  con cambiar `PROCESSED_BUCKET` / `AUDIO_KEY_TEMPLATE` o el worker.
+- El contrato dice que song.played se publica al terminar con los segundos
+  escuchados; aca se publica al iniciar con `listened_sec: 0`, como pide la
+  consigna del Integrante 3.
+- Autenticacion JWT via gateway.

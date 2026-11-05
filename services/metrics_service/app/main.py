@@ -6,9 +6,11 @@ from contextlib import AsyncExitStack, asynccontextmanager
 import aio_pika
 from fastapi import FastAPI, HTTPException, Path
 from pydantic import ValidationError
+from jsonschema.exceptions import ValidationError as SchemaValidationError
 
 from app.database import SCHEMA, open_pool, record_play
-from app.models import SongMetrics, SongPlayed
+from app.models import SongMetrics
+from app.events import parse_play
 
 
 logging.basicConfig(level=logging.INFO)
@@ -31,29 +33,30 @@ async def lifespan(app: FastAPI):
         channel = await broker.channel()
         await channel.set_qos(prefetch_count=20)
         exchange = await channel.declare_exchange(
-            "domain_events", aio_pika.ExchangeType.TOPIC, durable=True,
+            "musicapp.events", aio_pika.ExchangeType.TOPIC, durable=True,
         )
-        await channel.declare_queue("metrics.song.played.invalid", durable=True)
+        dead_exchange = await channel.declare_exchange(
+            "musicapp.dlx", aio_pika.ExchangeType.TOPIC, durable=True,
+        )
+        dead_queue = await channel.declare_queue("musicapp.dlq", durable=True)
+        await dead_queue.bind(dead_exchange, routing_key="#")
         queue = await channel.declare_queue(
-            "metrics.song.played", durable=True,
+            "metrics.q", durable=True,
             arguments={
-                "x-dead-letter-exchange": "",
-                "x-dead-letter-routing-key": "metrics.song.played.invalid",
+                "x-dead-letter-exchange": "musicapp.dlx",
             },
         )
-        await queue.bind(exchange, routing_key="song.played")
+        await queue.bind(exchange, routing_key="song.played.v1")
 
         async def consume(message: aio_pika.IncomingMessage):
             try:
-                event = SongPlayed.model_validate_json(message.body)
-                if message.message_id and len(message.message_id) > 128:
-                    raise ValueError("message_id exceeds 128 characters")
-            except (ValidationError, ValueError):
-                logger.warning("Invalid song.played message rejected")
+                event = parse_play(message.body, message.routing_key)
+            except (ValidationError, SchemaValidationError, ValueError, UnicodeDecodeError):
+                logger.warning("Invalid song.played.v1 message rejected")
                 await message.reject(requeue=False)
                 return
             try:
-                await record_play(pool, event, message.message_id)
+                await record_play(pool, event)
             except Exception:
                 logger.exception("Could not persist play; retrying after backoff")
                 await asyncio.sleep(2)
@@ -69,7 +72,7 @@ async def lifespan(app: FastAPI):
         app.state.pool = pool
         app.state.broker = broker
         app.state.channel = channel
-        logger.info("Consuming domain_events/song.played")
+        logger.info("Consuming musicapp.events/song.played.v1 on metrics.q")
         yield
 
 

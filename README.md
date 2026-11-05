@@ -1,61 +1,60 @@
 # TeroMusic
 
-## Infraestructura local (Integrante 4)
+## Infraestructura local
 
-Requisitos: Git y Docker Desktop iniciado con contenedores Linux.
-Ejecutar desde esta carpeta del repositorio clonado, en PowerShell:
+Requisitos: Docker Desktop con contenedores Linux. Desde la raiz del repositorio:
 
 ```powershell
 Copy-Item .env.example .env
- docker compose config --quiet
- docker compose up -d --wait
- docker compose ps
+docker compose config --quiet
+docker compose up -d --build --wait
 ```
 
-Copiar `.env.example` solamente la primera vez. `.env` no se sube a Git.
-Las credenciales de ejemplo son para desarrollo local; cambiarlas para desplegar.
+Copiar el ejemplo solo la primera vez. Si ya existe `.env`, conservarlo:
+las credenciales inicializadas en PostgreSQL y RabbitMQ no cambian por editar
+variables. `.env` es local y no se sube a Git.
 
-| Servicio | Acceso local | Host desde contenedores |
-| --- | --- | --- |
-| PostgreSQL | localhost:5433 | postgres:5432 |
-| RabbitMQ | localhost:5672 | rabbitmq:5672 |
-| RabbitMQ Dashboard | http://localhost:15672 | rabbitmq:15672 |
-| MinIO S3 | http://localhost:9000 | minio:9000 |
-| MinIO Console | http://localhost:9001 | minio:9001 |
-| Redis | localhost:6379 | redis:6379 |
+Los valores por defecto coinciden con main:
 
-Las credenciales se configuran en `.env`. Los puertos se publican solamente
-para la maquina local. Dentro de contenedores usar los hosts de la tabla,
-ya que localhost apunta al propio contenedor.
-Crear los buckets `raw-audio` y `processed-audio` desde MinIO Console antes
-de integrar la carga y el procesamiento de audio.
+| Servicio | Acceso local | Host dentro de Docker | Usuario de ejemplo |
+| --- | --- | --- | --- |
+| PostgreSQL | localhost:5432 | postgres:5432 | admin |
+| RabbitMQ AMQP | localhost:5672 | rabbitmq:5672 | guest |
+| RabbitMQ Dashboard | http://localhost:15672 | rabbitmq:15672 | guest |
+| MinIO API | http://localhost:9000 | minio:9000 | minioadmin |
+| MinIO Console | http://localhost:9001 | minio:9001 | minioadmin |
+| Redis | localhost:6379 | redis:6379 | - |
+| Metricas | http://localhost:8004/docs | metrics_service:8000 | - |
 
-El puerto local de PostgreSQL se configura con `POSTGRES_PORT` (5433 por
-defecto, para evitar conflictos con una instalacion local en 5432).
-Dentro de Docker PostgreSQL sigue escuchando en 5432.
+Contrasenas de ejemplo en `.env.example`. Son valores de desarrollo local.
+Se permite guest entre contenedores para mantener compatibilidad con main;
+los puertos publicados se limitan a la maquina local. No usar este Compose
+con estas credenciales como despliegue publico.
 
-MinIO se compila desde el codigo oficial de la version
-`RELEASE.2025-10-15T17-29-55Z`, porque las imagenes publicadas en Docker Hub
-y Quay no estuvieron disponibles. El primer inicio necesita descargar Go
-y compilar las dependencias; los siguientes reutilizan la imagen local.
-Para reconstruir: `docker compose build minio`.
+Si Windows bloquea el puerto 5432, poner `POSTGRES_PORT=5433` en el `.env`
+local. Dentro de Docker PostgreSQL siempre usa 5432. Los entornos inicializados
+con la version anterior pueden conservar sus usuarios `tero` y `tero_minio`
+en `.env`, sin cambiar los valores compartidos ni borrar sus volumenes.
 
-Para consultar errores: `docker compose logs --tail 100`.
-Para detener: `docker compose stop`. Para volver a iniciar:
-`docker compose up -d --wait`.
+MinIO usa la misma imagen que main:
+`docker.io/pgsty/silo:RELEASE.2026-09-16T00-00-00Z`.
+Crear los buckets `raw-audio` y `processed-audio` en cada entorno local.
+Los buckets creados en otra maquina no se distribuyen al clonar el repo.
 
-`docker compose down` conserva los volumenes. Los cuatro servicios tienen
-persistencia y Redis usa AOF. `docker compose down -v` borra los datos locales.
-Los volumenes no reemplazan copias de seguridad.
+Hay healthchecks y volumenes persistentes para los cuatro servicios base.
+`docker compose stop` detiene; `docker compose up -d --wait` inicia.
+`docker compose logs --tail 100` muestra errores.
+`docker compose down` conserva volumenes; `docker compose down -v` borra datos.
+No borrar volumenes para resolver diferencias de credenciales.
 
-PostgreSQL y RabbitMQ inicializan sus usuarios con volumenes nuevos; cambiar
-.env despues no actualiza las credenciales ya guardadas. Para conservar los
-datos, modificar los usuarios desde el servicio correspondiente.
+## Eventos y metricas
 
-Este Compose levanta la infraestructura compartida y metrics_service.
-La API de metricas esta en http://localhost:8004/docs. Su contrato de eventos
-y pruebas se documentan en services/metrics_service/README.md.
-El streaming (audio_service) esta en http://localhost:8003/docs y publica
-`song.played` para metricas; ver services/audio_service/README.md.
-El siguiente bloque pendiente es notification_service
-(historial y GET /notifications/user/{user_id}).
+Los contratos del equipo estan en `contracts/README.md`.
+Metricas consume `song.played.v1` de `musicapp.events` mediante `metrics.q`.
+Valida el sobre CloudEvents y el data con los JSON Schema del repositorio;
+usa `id` para deduplicar. Ver `services/metrics_service/README.md`.
+Notificaciones sigue pendiente.
+
+Streaming: audio_service (Node.js) en http://localhost:8003. Sirve
+`GET /audio/stream/{song_id}` con cache Redis por fragmentos y publica
+`song.played.v1` al iniciar. Ver `services/audio_service/README.md`.

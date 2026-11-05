@@ -1,5 +1,4 @@
 import os
-from uuid import uuid4
 
 import asyncpg
 
@@ -33,10 +32,8 @@ async def open_pool():
     )
 
 
-async def record_play(pool, event: SongPlayed, message_id: str | None = None):
-    event_id = event.event_id or message_id or str(uuid4())
-    if len(event_id) > 128:
-        raise ValueError("message_id exceeds 128 characters")
+async def record_play(pool, event: SongPlayed):
+    event_id = event.event_id
     async with pool.acquire() as connection:
         async with connection.transaction():
             inserted = await connection.fetchval(

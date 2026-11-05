@@ -10,9 +10,7 @@ class SongPlayed(BaseModel):
     song_id: Identifier
     user_id: Identifier
     timestamp: AwareDatetime
-    # Optional for compatibility with the original three-field contract.
-    # Producers should supply a stable ID to make redelivery idempotent.
-    event_id: Identifier | None = None
+    event_id: Identifier
 
 
 class SongMetrics(BaseModel):
