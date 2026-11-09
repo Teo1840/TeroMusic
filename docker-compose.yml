@@ -43,17 +43,84 @@ services:
       - "6379:6379"
 
   user_service:
+  build:
+    context: ./user_service
+  container_name: user_service
+  environment:
+    DATABASE_URL: postgresql://admin:adminpassword@postgres:5432/streaming_db
+    JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+    ACCESS_TOKEN_EXPIRE_MINUTES: 60
+  depends_on:
+    - postgres
+  ports:
+    - "8000:8000"
+
+  catalog_service:
     build:
-      context: ./user_service
-    container_name: user_service
+      context: ./catalog_service
+    container_name: catalog_service
     environment:
       DATABASE_URL: postgresql://admin:adminpassword@postgres:5432/streaming_db
       JWT_SECRET_KEY: ${JWT_SECRET_KEY}
-      ACCESS_TOKEN_EXPIRE_MINUTES: 60
     depends_on:
       - postgres
+      - user_service
     ports:
-      - "8000:8000"
+      - "8001:8000"
+
+  audio_service:
+    build:
+      context: ./audio_service
+    container_name: audio_service
+    environment:
+      DATABASE_URL: postgresql://admin:adminpassword@postgres:5432/streaming_db
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadminpassword
+    depends_on:
+      - postgres
+      - minio
+      - user_service
+    ports:
+      - "8002:8000"
+
+  metrics_service:
+    build:
+      context: ./metrics_service
+    container_name: metrics_service
+    environment:
+      DATABASE_URL: postgresql://admin:adminpassword@postgres:5432/streaming_db
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+    depends_on:
+      - postgres
+      - user_service
+    ports:
+      - "8003:8000"
+
+  gateway:
+    image: nginx:alpine
+    container_name: api_gateway
+    ports:
+      - "80:80"
+    volumes:
+      - ./gateway/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - user_service
+      - catalog_service
+      - audio_service
+      - metrics_service
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: frontend
+    depends_on:
+      - gateway
+    ports:
+      - "5173:5173"
+
+  
 
 volumes:
   postgres_data:
