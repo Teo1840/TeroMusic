@@ -4,12 +4,12 @@ import os
 from contextlib import AsyncExitStack, asynccontextmanager
 
 import aio_pika
-from fastapi import FastAPI, HTTPException, Path
+from fastapi import FastAPI, HTTPException, Path, Query
 from pydantic import ValidationError
 from jsonschema.exceptions import ValidationError as SchemaValidationError
 
 from app.database import SCHEMA, open_pool, record_play
-from app.models import SongMetrics
+from app.models import SongMetrics, TopSongs, TotalPlays
 from app.events import parse_play
 
 
@@ -100,3 +100,31 @@ async def song_metrics(song_id: str = Path(min_length=1, max_length=128, pattern
         logger.exception("Could not read metrics")
         raise HTTPException(status_code=503, detail="Database unavailable") from None
     return SongMetrics(song_id=song_id, total_plays=count or 0)
+
+
+@app.get("/metrics/plays", response_model=TotalPlays)
+async def total_plays():
+    """Total de reproducciones de todas las canciones."""
+    try:
+        count = await app.state.pool.fetchval(
+            "SELECT COALESCE(SUM(total_plays), 0) FROM analytics.song_metrics",
+        )
+    except Exception:
+        logger.exception("Could not read metrics")
+        raise HTTPException(status_code=503, detail="Database unavailable") from None
+    return TotalPlays(plays=count)
+
+
+@app.get("/metrics/top", response_model=TopSongs)
+async def top_songs(limit: int = Query(default=10, ge=1, le=100)):
+    """Canciones mas reproducidas, de mayor a menor."""
+    try:
+        rows = await app.state.pool.fetch(
+            """SELECT song_id, total_plays FROM analytics.song_metrics
+               ORDER BY total_plays DESC, song_id LIMIT $1""",
+            limit,
+        )
+    except Exception:
+        logger.exception("Could not read metrics")
+        raise HTTPException(status_code=503, detail="Database unavailable") from None
+    return TopSongs(songs=[SongMetrics(**dict(row)) for row in rows])

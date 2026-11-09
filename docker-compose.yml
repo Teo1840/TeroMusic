@@ -54,6 +54,22 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+  # Crea los buckets una vez y termina. "audio" es el del contrato (catalogo y worker);
+  # raw-audio y processed-audio son los que usa hoy audio_service.
+  minio-init:
+    image: docker.io/pgsty/silo:RELEASE.2026-09-16T00-00-00Z
+    restart: "no"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_PASS:-minioadminpassword}
+    entrypoint: ["sh", "-c"]
+    command:
+      - >-
+        mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" &&
+        mc mb --ignore-existing local/audio local/raw-audio local/processed-audio
+    depends_on:
+      minio:
+        condition: service_healthy
   redis:
     image: redis:7-alpine
     container_name: redis_cache
@@ -106,8 +122,11 @@ services:
       MINIO_PORT: 9000
       MINIO_USER: ${MINIO_USER:-minioadmin}
       MINIO_PASS: ${MINIO_PASS:-minioadminpassword}
-      PROCESSED_BUCKET: processed-audio
-      AUDIO_KEY_TEMPLATE: "{song_id}/128.mp3"
+      # Archivos de worker_ingesta: audio/processed/{song_id}/128.mp3 y 320.mp3
+      AUDIO_BUCKET: audio
+      AUDIO_KEY_TEMPLATE: "processed/{song_id}/{bitrate}.mp3"
+      CATALOG_URL: http://catalog_service:8000
+      JWT_SECRET: ${JWT_SECRET}
       REDIS_URL: redis://redis:6379
       CACHE_TTL_SEC: 3600
       CHUNK_SIZE: 1048576
@@ -116,8 +135,8 @@ services:
     ports:
       - "127.0.0.1:${AUDIO_PORT:-8003}:8000"
     depends_on:
-      minio:
-        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
       rabbitmq:

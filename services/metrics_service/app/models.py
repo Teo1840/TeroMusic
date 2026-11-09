@@ -16,3 +16,11 @@ class SongPlayed(BaseModel):
 class SongMetrics(BaseModel):
     song_id: str
     total_plays: int
+
+
+class TotalPlays(BaseModel):
+    plays: int
+
+
+class TopSongs(BaseModel):
+    songs: list[SongMetrics]

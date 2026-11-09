@@ -38,8 +38,9 @@ en `.env`, sin cambiar los valores compartidos ni borrar sus volumenes.
 
 MinIO usa la misma imagen que main:
 `docker.io/pgsty/silo:RELEASE.2026-09-16T00-00-00Z`.
-Crear los buckets `raw-audio` y `processed-audio` en cada entorno local.
-Los buckets creados en otra maquina no se distribuyen al clonar el repo.
+Los buckets se crean solos al levantar el Compose: el servicio `minio-init`
+crea `audio` (el del contrato, para catalogo y worker), `raw-audio` y
+`processed-audio`, y termina. Si ya existen, no los toca.
 
 Hay healthchecks y volumenes persistentes para los cuatro servicios base.
 `docker compose stop` detiene; `docker compose up -d --wait` inicia.

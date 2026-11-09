@@ -20,7 +20,23 @@ GET /metrics/songs/{song_id} devuelve:
 ```
 
 Devuelve cero si no hay reproducciones registradas; no verifica la existencia
-en catalogo. GET /health verifica PostgreSQL y RabbitMQ. Las dependencias no
+en catalogo.
+
+GET /metrics/plays devuelve el total de reproducciones de todas las canciones:
+
+```json
+{"plays":154}
+```
+
+GET /metrics/top?limit=10 devuelve las canciones mas reproducidas, de mayor a
+menor. limit va de 1 a 100 (por defecto 10); fuera de rango responde 422.
+Solo incluye canciones con al menos una reproduccion; los titulos se buscan
+en catalogo.
+
+```json
+{"songs":[{"song_id":"c3d4e5f6-1a2b-4c3d-8e9f-0a1b2c3d4e5f","total_plays":12}]}
+```
+ GET /health verifica PostgreSQL y RabbitMQ. Las dependencias no
 disponibles producen 503. Autenticacion JWT y ruteo del gateway aun pendientes.
 
 ## Contrato compartido

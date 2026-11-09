@@ -11,9 +11,13 @@ from app.database import open_pool
 import os
 
 
-def get_metrics(song_id):
-    with urlopen(f"http://localhost:8000/metrics/songs/{song_id}", timeout=5) as response:
+def get_json(path):
+    with urlopen(f"http://localhost:8000{path}", timeout=5) as response:
         return json.load(response)
+
+
+def get_metrics(song_id):
+    return get_json(f"/metrics/songs/{song_id}")
 
 
 async def main():
@@ -25,6 +29,7 @@ async def main():
     )
     try:
         assert get_metrics(song_id) == {"song_id": song_id, "total_plays": 0}
+        plays_before = get_json("/metrics/plays")["plays"]
         channel = await broker.channel()
         exchange = await channel.get_exchange("musicapp.events")
         # Start with the team's canonical example, including its full envelope.
@@ -51,6 +56,13 @@ async def main():
         assert await pool.fetchval(
             "SELECT COUNT(*) FROM analytics.play_events WHERE song_id=$1", song_id,
         ) == 10
+        # Global total and ranking include this test's plays (other songs may change meanwhile).
+        assert get_json("/metrics/plays")["plays"] >= plays_before + 10
+        top = get_json("/metrics/top?limit=100")["songs"]
+        counts = [s["total_plays"] for s in top]
+        assert counts == sorted(counts, reverse=True), counts
+        if len(top) < 100:
+            assert {"song_id": song_id, "total_plays": 10} in top, top
         # Invalid events must not increment and must reach the dead-letter queue.
         invalid_id = str(uuid4())
         await publish({**event, "id": invalid_id, "data": {"song_id": song_id}})
@@ -76,7 +88,7 @@ async def main():
             for message in unrelated:
                 await message.nack(requeue=True)
         assert get_metrics(song_id)["total_plays"] == 10
-        print("PASS: zero plays, AMQP -> PostgreSQL -> REST, concurrency, deduplication, CloudEvents validation, invalid events")
+        print("PASS: zero plays, total plays, top songs, AMQP -> PostgreSQL -> REST, concurrency, deduplication, CloudEvents validation, invalid events")
     finally:
         await broker.close()
         await pool.execute("DELETE FROM analytics.play_events WHERE song_id=$1", song_id)
