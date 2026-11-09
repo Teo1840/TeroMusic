@@ -54,7 +54,8 @@ Los contratos del equipo estan en `contracts/README.md`.
 Metricas consume `song.played.v1` de `musicapp.events` mediante `metrics.q`.
 Valida el sobre CloudEvents y el data con los JSON Schema del repositorio;
 usa `id` para deduplicar. Ver `services/metrics_service/README.md`.
-Notificaciones sigue pendiente.
+Notificaciones: `notification_service` en http://localhost:8005/docs.
+Historial: `GET /notifications/user/{user_id}`. Ver `services/notification_service/README.md`.
 
 Streaming: audio_service (Node.js) en http://localhost:8003. Sirve
 `GET /audio/stream/{song_id}` con cache Redis por fragmentos y publica
