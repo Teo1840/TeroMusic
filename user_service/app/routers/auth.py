@@ -1,4 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Response,
+    status
+)
+
 from sqlalchemy.orm import Session
 
 from ..database import get_db
@@ -11,7 +18,8 @@ from ..schemas import (
 from ..security import (
     hash_password,
     verify_password,
-    create_access_token
+    create_access_token,
+    get_current_user
 )
 
 
@@ -52,7 +60,8 @@ def register(
 
     token = create_access_token(
         user.id,
-        user.email
+        user.email,
+        user.role
     )
 
     return {
@@ -93,10 +102,25 @@ def login(
 
     token = create_access_token(
         user.id,
-        user.email
+        user.email,
+        user.role
     )
 
     return {
         "access_token": token,
         "token_type": "bearer"
+    }
+
+
+@router.get("/verify")
+def verify_token(
+    response: Response,
+    current_user=Depends(get_current_user)
+):
+
+    response.headers["X-User-Id"] = current_user["sub"]
+    response.headers["X-User-Role"] = current_user["role"]
+
+    return {
+        "valid": True
     }

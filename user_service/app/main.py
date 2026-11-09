@@ -20,7 +20,6 @@ app.include_router(
 
 @app.get("/health")
 def health():
-
     return {
         "status": "ok",
         "service": "user_service"
