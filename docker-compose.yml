@@ -1,4 +1,5 @@
 services:
+  # ---------- Infraestructura ----------
   postgres:
     image: postgres:15-alpine
     container_name: postgres_db
@@ -13,9 +14,10 @@ services:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
-      interval: 10s
+      interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
+
   rabbitmq:
     image: rabbitmq:3-management-alpine
     container_name: rabbitmq_broker
@@ -33,17 +35,18 @@ services:
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 10s
-      timeout: 5s
+      timeout: 10s
       retries: 10
       start_period: 20s
+
   minio:
     image: docker.io/pgsty/silo:RELEASE.2026-09-16T00-00-00Z
     container_name: minio_s3
     restart: unless-stopped
+    command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_USER:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_PASS:-minioadminpassword}
-    command: server /data --console-address ":9001"
     ports:
       - "127.0.0.1:9000:9000"
       - "127.0.0.1:9001:9001"
@@ -54,8 +57,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-  # Crea los buckets una vez y termina. "audio" es el del contrato (catalogo y worker);
-  # raw-audio y processed-audio son los que usa hoy audio_service.
+
+  # Crea el bucket "audio" del contrato (raw/ y processed/) una vez y termina.
   minio-init:
     image: docker.io/pgsty/silo:RELEASE.2026-09-16T00-00-00Z
     restart: "no"
@@ -66,10 +69,11 @@ services:
     command:
       - >-
         mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" &&
-        mc mb --ignore-existing local/audio local/raw-audio local/processed-audio
+        mc mb --ignore-existing local/audio
     depends_on:
       minio:
         condition: service_healthy
+
   redis:
     image: redis:7-alpine
     container_name: redis_cache
@@ -84,6 +88,44 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # ---------- Servicios del Integrante 2 ----------
+  catalog_service:
+    build: ./services/catalog_service
+    container_name: catalog_service
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASS}@rabbitmq:5672/
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_USER}
+      MINIO_SECRET_KEY: ${MINIO_PASS}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_started
+
+  worker_ingesta:
+    build: ./services/worker_ingesta
+    container_name: worker_ingesta
+    restart: unless-stopped
+    environment:
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASS}@rabbitmq:5672/
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_USER}
+      MINIO_SECRET_KEY: ${MINIO_PASS}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_started
+
+  # ---------- Servicios del Integrante 3 ----------
   metrics_service:
     build:
       context: .
@@ -111,6 +153,7 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s
+
   audio_service:
     build:
       context: .
@@ -141,12 +184,15 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      catalog_service:
+        condition: service_started
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8000/health"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
+
 volumes:
   postgres_data:
   rabbitmq_data:
