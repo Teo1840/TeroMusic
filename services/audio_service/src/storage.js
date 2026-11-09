@@ -4,14 +4,10 @@ const config = require('./config');
 
 const client = new Minio.Client(config.minio);
 
-function keyFor(songId) {
-  return config.keyTemplate.replaceAll('{song_id}', songId);
-}
-
 /** Tamano y tipo del archivo procesado, o null si no existe. */
-async function stat(songId) {
+async function stat(key) {
   try {
-    const info = await client.statObject(config.bucket, keyFor(songId));
+    const info = await client.statObject(config.bucket, key);
     const contentType = info.metaData?.['content-type'];
     return {
       size: info.size,
@@ -24,10 +20,10 @@ async function stat(songId) {
 }
 
 /** Lee el fragmento numero `num` (el ultimo puede ser mas corto). */
-async function readChunk(songId, num, size) {
+async function readChunk(key, num, size) {
   const offset = num * config.chunkSize;
   const length = Math.min(config.chunkSize, size - offset);
-  const stream = await client.getPartialObject(config.bucket, keyFor(songId), offset, length);
+  const stream = await client.getPartialObject(config.bucket, key, offset, length);
   const parts = [];
   for await (const part of stream) parts.push(part);
   return Buffer.concat(parts);
@@ -37,4 +33,4 @@ async function ping() {
   await client.bucketExists(config.bucket);
 }
 
-module.exports = { client, keyFor, stat, readChunk, ping };
+module.exports = { client, stat, readChunk, ping };

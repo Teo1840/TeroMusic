@@ -1,6 +1,10 @@
 const { randomUUID } = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const amqp = require('amqplib');
+const Ajv2020 = require('ajv/dist/2020');
+const addFormats = require('ajv-formats');
 
 const config = require('./config');
 
@@ -8,32 +12,55 @@ const EXCHANGE = 'musicapp.events';
 const TYPE = 'song.played.v1';
 const RETRY_DELAYS_MS = [500, 1000, 2000];
 
+// En el repo: ../../../contracts. En la imagen Docker: /app/contracts.
+const CONTRACTS = [path.resolve(__dirname, '../../../contracts'), path.resolve(__dirname, '../contracts')]
+  .find((dir) => fs.existsSync(dir));
+if (!CONTRACTS) throw new Error('No se encontro la carpeta contracts/');
+
+const ajv = new Ajv2020({ allErrors: true, strict: false });
+addFormats(ajv);
+const validateData = ajv.compile(
+  JSON.parse(fs.readFileSync(path.join(CONTRACTS, `events/${TYPE}.schema.json`), 'utf8')),
+);
+
 let connection = null;
 let channel = null;
 let closing = false;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/** Sobre CloudEvents de contracts/events/song.played.v1.schema.json. */
-function buildSongPlayed({ songId, userId, correlationId, now = new Date() }) {
-  const time = now.toISOString();
+class InvalidEvent extends Error {
+  constructor(errors) {
+    super('El evento no cumple el contrato');
+    this.errors = errors;
+  }
+}
+
+/** Errores de validacion legibles: "/listened_sec must be >= 0". */
+function describe(errors) {
+  return errors.map((e) => {
+    if (e.keyword === 'additionalProperties') return `campo no permitido: ${e.params.additionalProperty}`;
+    if (e.keyword === 'required') return `falta ${e.params.missingProperty}`;
+    return `${e.instancePath.slice(1) || 'data'} ${e.message}`;
+  });
+}
+
+/**
+ * Sobre CloudEvents con el data de contracts/events/song.played.v1.schema.json.
+ * Lanza InvalidEvent si el data no cumple el schema.
+ */
+function buildSongPlayed(data, { correlationId, now = new Date() } = {}) {
+  if (!validateData(data)) throw new InvalidEvent(describe(validateData.errors));
   const event = {
     specversion: '1.0',
     id: randomUUID(),
     source: '/services/audio',
     type: TYPE,
-    time,
-    subject: `song/${songId}`,
+    time: now.toISOString(),
+    subject: `song/${data.song_id}`,
     datacontenttype: 'application/json',
     dataschema: `contracts/events/${TYPE}.schema.json`,
-    data: {
-      song_id: songId,
-      user_id: userId,
-      started_at: time,
-      // Se publica al iniciar, por eso todavia no hay segundos escuchados.
-      listened_sec: 0,
-      client: 'web',
-    },
+    data,
   };
   if (correlationId) event.correlationid = correlationId;
   return event;
@@ -99,20 +126,6 @@ async function publish(event) {
   }
 }
 
-/**
- * Fire-and-forget: devuelve enseguida y publica en segundo plano,
- * sin retrasar la entrega del audio. Los errores solo van al log.
- */
-function publishSongPlayed(params) {
-  const event = buildSongPlayed(params);
-  setImmediate(() => {
-    publish(event)
-      .then(() => console.log(`[events] ${TYPE} song_id=${params.songId} id=${event.id}`))
-      .catch((error) => console.error(`[events] No se pudo publicar ${TYPE}: ${error.message}`));
-  });
-  return event;
-}
-
 function isReady() {
   return channel !== null;
 }
@@ -122,4 +135,4 @@ async function close() {
   if (connection) await connection.close().catch(() => {});
 }
 
-module.exports = { EXCHANGE, TYPE, buildSongPlayed, connect, publishSongPlayed, isReady, close };
+module.exports = { EXCHANGE, TYPE, InvalidEvent, buildSongPlayed, connect, publish, isReady, close };

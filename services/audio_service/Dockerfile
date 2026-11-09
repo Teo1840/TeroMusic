@@ -3,8 +3,7 @@ FROM node:22-alpine
 ENV NODE_ENV=production
 WORKDIR /app
 COPY services/audio_service/package.json services/audio_service/package-lock.json ./
-# Incluye devDependencies (ajv) para poder correr los tests dentro del contenedor.
-RUN npm ci --include=dev && npm cache clean --force
+RUN npm ci --omit=dev && npm cache clean --force
 COPY services/audio_service/src ./src
 COPY services/audio_service/test ./test
 COPY contracts ./contracts

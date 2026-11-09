@@ -9,18 +9,16 @@
   },
   "scripts": {
     "start": "node src/index.js",
-    "test": "node --test test/range.test.js test/events.test.js test/integration.test.js",
-    "test:unit": "node --test test/range.test.js test/events.test.js",
+    "test": "node --test test/range.test.js test/events.test.js test/auth.test.js test/app.test.js test/integration.test.js",
+    "test:unit": "node --test test/range.test.js test/events.test.js test/auth.test.js test/app.test.js",
     "test:integration": "node --test test/integration.test.js"
   },
   "dependencies": {
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
     "amqplib": "^0.10.4",
     "express": "^4.21.2",
     "ioredis": "^5.4.2",
     "minio": "^8.0.4"
-  },
-  "devDependencies": {
-    "ajv": "^8.17.1",
-    "ajv-formats": "^3.0.1"
   }
 }

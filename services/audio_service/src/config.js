@@ -15,9 +15,21 @@ module.exports = {
     accessKey: env.MINIO_USER || 'minioadmin',
     secretKey: env.MINIO_PASS || 'minioadminpassword',
   },
-  bucket: env.PROCESSED_BUCKET || 'processed-audio',
-  // Ruta del archivo dentro del bucket. {song_id} se reemplaza por el id.
-  keyTemplate: env.AUDIO_KEY_TEMPLATE || '{song_id}/128.mp3',
+  // Bucket y rutas que escribe worker_ingesta.
+  bucket: env.AUDIO_BUCKET || 'audio',
+  // Solo se usa si el catalogo no trae renditions. {song_id} y {bitrate} se reemplazan.
+  keyTemplate: env.AUDIO_KEY_TEMPLATE || 'processed/{song_id}/{bitrate}.mp3',
+  bitrates: [128, 320],
+  defaultBitrate: 128,
+
+  // catalog_service: GET /songs/{song_id} dice si la cancion esta PUBLICADO.
+  catalogUrl: (env.CATALOG_URL || 'http://catalog_service:8000').replace(/\/+$/, ''),
+  catalogTimeoutMs: int('CATALOG_TIMEOUT_MS', 3000),
+  catalogCacheTtlSec: int('CATALOG_CACHE_TTL_SEC', 60),
+
+  // JWT HS256 firmado con JWT_SECRET; el usuario sale del claim JWT_USER_CLAIM.
+  jwtSecret: env.JWT_SECRET || '',
+  jwtUserClaim: env.JWT_USER_CLAIM || 'sub',
 
   redisUrl: env.REDIS_URL || 'redis://redis:6379',
   cacheTtlSec: int('CACHE_TTL_SEC', 3600),
