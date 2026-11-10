@@ -1,55 +1,202 @@
-version: '3.8'
-
 services:
+  # ---------- Infraestructura ----------
   postgres:
     image: postgres:15-alpine
     container_name: postgres_db
+    restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-admin}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-adminpassword}
       POSTGRES_DB: ${POSTGRES_DB:-streaming_db}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-admin} -d ${POSTGRES_DB:-streaming_db}"]
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
       interval: 5s
       timeout: 5s
       retries: 10
 
+
   rabbitmq:
     image: rabbitmq:3-management-alpine
     container_name: rabbitmq_broker
-    ports:
-      - "5672:5672"
-      - "15672:15672"
+    restart: unless-stopped
     environment:
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-guest}
+      # Permite conexiones guest entre contenedores en este entorno local.
+      RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: '-rabbit loopback_users []'
+    ports:
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
 
   minio:
     image: docker.io/pgsty/silo:RELEASE.2026-09-16T00-00-00Z
     container_name: minio_s3
-    ports:
-      - "9000:9000"
-      - "9001:9001"
-    environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadminpassword
+    restart: unless-stopped
     command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_PASS:-minioadminpassword}
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
     volumes:
       - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Crea el bucket "audio" del contrato (raw/ y processed/) una vez y termina.
+  minio-init:
+    image: docker.io/pgsty/silo:RELEASE.2026-09-16T00-00-00Z
+    restart: "no"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_PASS:-minioadminpassword}
+    entrypoint: ["sh", "-c"]
+    command:
+      - >-
+        mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" &&
+        mc mb --ignore-existing local/audio
+    depends_on:
+      minio:
+        condition: service_healthy
 
   redis:
     image: redis:7-alpine
     container_name: redis_cache
+    restart: unless-stopped
+    command: redis-server --appendonly yes
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---------- Servicios del Integrante 2 ----------
+  catalog_service:
+    build: ./services/catalog_service
+    container_name: catalog_service
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASS}@rabbitmq:5672/
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_USER}
+      MINIO_SECRET_KEY: ${MINIO_PASS}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_started
+
+  worker_ingesta:
+    build: ./services/worker_ingesta
+    container_name: worker_ingesta
+    restart: unless-stopped
+    environment:
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASS}@rabbitmq:5672/
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_USER}
+      MINIO_SECRET_KEY: ${MINIO_PASS}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_started
+
+  # ---------- Servicios del Integrante 3 ----------
+  metrics_service:
+    build:
+      context: .
+      dockerfile: services/metrics_service/Dockerfile
+    restart: unless-stopped
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-adminpassword}
+      POSTGRES_DB: ${POSTGRES_DB:-streaming_db}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_PASS: ${RABBITMQ_PASS:-guest}
+    ports:
+      - "127.0.0.1:${METRICS_PORT:-8004}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  audio_service:
+    build:
+      context: .
+      dockerfile: services/audio_service/Dockerfile
+    restart: unless-stopped
+    environment:
+      PORT: 8000
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_USER: ${MINIO_USER:-minioadmin}
+      MINIO_PASS: ${MINIO_PASS:-minioadminpassword}
+      # Archivos de worker_ingesta: audio/processed/{song_id}/128.mp3 y 320.mp3
+      AUDIO_BUCKET: audio
+      AUDIO_KEY_TEMPLATE: "processed/{song_id}/{bitrate}.mp3"
+      CATALOG_URL: http://catalog_service:8000
+      JWT_SECRET: ${JWT_SECRET}
+      REDIS_URL: redis://redis:6379
+      CACHE_TTL_SEC: 3600
+      CHUNK_SIZE: 1048576
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASS:-guest}@rabbitmq:5672
+      METRICS_URL: http://metrics_service:8000
+    ports:
+      - "127.0.0.1:${AUDIO_PORT:-8003}:8000"
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      catalog_service:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   user_service:
     build:
-      context: ./user_service
+      context: ./services/user_service
     container_name: user_service
     environment:
       DATABASE_URL: postgresql://admin:adminpassword@postgres:5432/streaming_db
@@ -59,49 +206,6 @@ services:
       - postgres
     ports:
       - "8000:8000"
-
-  catalog_service:
-    build:
-      context: ./catalog_service
-    container_name: catalog_service
-    environment:
-      DATABASE_URL: postgresql://admin:adminpassword@postgres:5432/streaming_db
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
-    depends_on:
-      - postgres
-      - user_service
-    ports:
-      - "8001:8000"
-
-  audio_service:
-    build:
-      context: ./audio_service
-    container_name: audio_service
-    environment:
-      DATABASE_URL: postgresql://admin:adminpassword@postgres:5432/streaming_db
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
-      MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: minioadmin
-      MINIO_SECRET_KEY: minioadminpassword
-    depends_on:
-      - postgres
-      - minio
-      - user_service
-    ports:
-      - "8002:8000"
-
-  metrics_service:
-    build:
-      context: ./metrics_service
-    container_name: metrics_service
-    environment:
-      DATABASE_URL: postgresql://admin:adminpassword@postgres:5432/streaming_db
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
-    depends_on:
-      - postgres
-      - user_service
-    ports:
-      - "8003:8000"
 
   gateway:
     build:
@@ -128,4 +232,6 @@ services:
 
 volumes:
   postgres_data:
+  rabbitmq_data:
   minio_data:
+  redis_data:

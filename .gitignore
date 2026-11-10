@@ -8,3 +8,4 @@ postgres_data/
 minio_data/
 .venv/
 dist/
+.DS_Store
