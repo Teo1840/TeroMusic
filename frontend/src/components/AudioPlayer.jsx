@@ -6,7 +6,7 @@ export default function AudioPlayer({
         localStorage.getItem("access_token");
 
     const url =
-        `/api/v1/audio/${songId}/stream`;
+        `/api/v1/audio/stream/${songId}`;
 
     return (
         <audio

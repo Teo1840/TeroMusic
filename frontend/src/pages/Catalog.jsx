@@ -40,7 +40,7 @@ export default function Catalog() {
                         </h2>
 
                         <p>
-                            {song.artist}
+                            {song.artist_name}
                         </p>
 
                     </div>
