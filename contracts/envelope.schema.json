@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "contracts/envelope.schema.json",
+  "title": "Event Envelope (CloudEvents 1.0)",
+  "description": "Sobre común para todos los eventos que viajan por RabbitMQ. Sigue CloudEvents 1.0 (formato JSON). El contenido de 'data' se valida aparte con el schema de cada evento.",
+  "type": "object",
+  "required": ["specversion", "id", "source", "type", "time", "datacontenttype", "data"],
+  "properties": {
+    "specversion": {
+      "description": "Versión de CloudEvents.",
+      "const": "1.0"
+    },
+    "id": {
+      "description": "Identificador único del evento (UUID). Se usa para descartar duplicados.",
+      "type": "string",
+      "format": "uuid"
+    },
+    "source": {
+      "description": "Servicio que emitió el evento.",
+      "type": "string",
+      "enum": [
+        "/services/user",
+        "/services/catalog",
+        "/services/audio",
+        "/services/rooms",
+        "/services/worker-ingesta"
+      ]
+    },
+    "type": {
+      "description": "Tipo de evento: <entidad>.<accion_en_pasado>.v<N>. Coincide con la routing key.",
+      "type": "string",
+      "pattern": "^[a-z]+(\\.[a-z_]+)+\\.v[0-9]+$"
+    },
+    "time": {
+      "description": "Momento en que ocurrió el hecho, RFC 3339 en UTC.",
+      "type": "string",
+      "format": "date-time",
+      "pattern": "Z$"
+    },
+    "subject": {
+      "description": "Entidad a la que se refiere el evento, p. ej. 'song/<id>'.",
+      "type": "string",
+      "pattern": "^[a-z]+/[A-Za-z0-9_-]+$"
+    },
+    "datacontenttype": {
+      "const": "application/json"
+    },
+    "dataschema": {
+      "description": "Ruta al schema que valida 'data'.",
+      "type": "string",
+      "pattern": "^contracts/events/[a-z_.]+\\.v[0-9]+\\.schema\\.json$"
+    },
+    "correlationid": {
+      "description": "Extensión propia: mismo valor en todos los eventos que nacen de una misma petición.",
+      "type": "string",
+      "minLength": 1
+    },
+    "data": {
+      "type": "object"
+    }
+  },
+  "propertyNames": {
+    "description": "CloudEvents exige nombres de atributos en minúsculas y alfanuméricos.",
+    "pattern": "^[a-z0-9]{1,20}$"
+  }
+}

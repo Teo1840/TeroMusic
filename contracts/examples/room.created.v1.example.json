@@ -1,0 +1,18 @@
+{
+  "specversion": "1.0",
+  "id": "9e8d7c6b-5a49-4382-a1b0-c9d8e7f6a5b4",
+  "source": "/services/rooms",
+  "type": "room.created.v1",
+  "time": "2026-10-27T20:00:00Z",
+  "subject": "room/77aa88bb-99cc-4dd0-8eef-112233445566",
+  "datacontenttype": "application/json",
+  "dataschema": "contracts/events/room.created.v1.schema.json",
+  "correlationid": "req-0d4e2f",
+  "data": {
+    "room_id": "77aa88bb-99cc-4dd0-8eef-112233445566",
+    "host_id": "5a1e2f30-8c4b-4f9d-a7e6-1b2c3d4e5f60",
+    "name": "Viernes de cumbia",
+    "visibility": "public",
+    "max_listeners": 50
+  }
+}

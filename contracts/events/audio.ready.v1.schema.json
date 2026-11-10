@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "contracts/events/audio.ready.v1.schema.json",
+  "title": "audio.ready.v1",
+  "description": "El worker terminó de transcodificar y el audio procesado ya está en MinIO. Publica: worker_ingesta. Consume: catalog_service (marca la canción como disponible).",
+  "type": "object",
+  "required": ["song_id", "renditions", "duration_sec"],
+  "additionalProperties": false,
+  "properties": {
+    "song_id": { "type": "string", "format": "uuid" },
+    "duration_sec": { "type": "number", "exclusiveMinimum": 0 },
+    "renditions": {
+      "description": "Versiones generadas (p. ej. 128 y 320 kbps). Permite calidad adaptativa sin cambiar el contrato.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["processed_key", "codec", "bitrate_kbps"],
+        "additionalProperties": false,
+        "properties": {
+          "processed_key": { "type": "string", "pattern": "^processed/[A-Za-z0-9_/-]+\\.[a-z0-9]+$" },
+          "codec": { "type": "string", "enum": ["mp3", "aac", "opus"] },
+          "bitrate_kbps": { "type": "integer", "minimum": 32, "maximum": 512 },
+          "size_bytes": { "type": "integer", "minimum": 1 }
+        }
+      }
+    },
+    "processing_ms": { "description": "Cuánto tardó la transcodificación.", "type": "integer", "minimum": 0 }
+  }
+}

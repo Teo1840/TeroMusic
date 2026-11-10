@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "contracts/events/audio.uploaded.v1.schema.json",
+  "title": "audio.uploaded.v1",
+  "description": "Se subió el archivo original de una canción a MinIO y está listo para transcodificar. Publica: catalog_service. Consume: worker_ingesta.",
+  "type": "object",
+  "required": ["song_id", "original_key", "uploaded_by", "content_type", "size_bytes"],
+  "additionalProperties": false,
+  "properties": {
+    "song_id": { "type": "string", "format": "uuid" },
+    "original_key": {
+      "description": "Ruta del archivo original dentro del bucket de MinIO.",
+      "type": "string",
+      "pattern": "^raw/[A-Za-z0-9_-]+\\.[a-z0-9]+$"
+    },
+    "bucket": { "type": "string", "default": "audio" },
+    "uploaded_by": { "type": "string", "format": "uuid" },
+    "content_type": {
+      "type": "string",
+      "enum": ["audio/mpeg", "audio/wav", "audio/x-wav", "audio/flac", "audio/ogg", "audio/aac", "audio/mp4"]
+    },
+    "size_bytes": { "type": "integer", "minimum": 1, "maximum": 524288000 },
+    "checksum_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+  }
+}

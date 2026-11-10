@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "contracts/events/audio.failed.v1.schema.json",
+  "title": "audio.failed.v1",
+  "description": "La transcodificación falló de forma definitiva (después de los reintentos). Publica: worker_ingesta. Consume: catalog_service (marca la canción como fallida).",
+  "type": "object",
+  "required": ["song_id", "error_code", "error_message", "attempts", "retryable"],
+  "additionalProperties": false,
+  "properties": {
+    "song_id": { "type": "string", "format": "uuid" },
+    "error_code": {
+      "type": "string",
+      "enum": ["UNSUPPORTED_FORMAT", "CORRUPT_FILE", "FILE_NOT_FOUND", "TOO_LONG", "TRANSCODE_ERROR", "STORAGE_ERROR"]
+    },
+    "error_message": { "type": "string", "maxLength": 1000 },
+    "attempts": { "type": "integer", "minimum": 1 },
+    "retryable": { "description": "true si tiene sentido reintentar más tarde (p. ej. STORAGE_ERROR).", "type": "boolean" }
+  }
+}
