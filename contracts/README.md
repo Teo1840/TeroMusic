@@ -32,7 +32,7 @@ contracts/
 | `worker_ingesta.q` | `audio.uploaded.v1` |
 | `catalog.q` | `audio.ready.v1`, `audio.failed.v1` |
 | `metrics.q` | `song.played.v1`, `user.registered.v1`, `room.created.v1` |
-| `notifications.q` | `user.registered.v1`, `room.created.v1` |
+| `notifications.q` | `user.registered.v1`, `room.created.v1`, `audio.uploaded.v1`, `audio.ready.v1`, `audio.failed.v1` |
 
 - Dead-letter: exchange `musicapp.dlx` → cola `musicapp.dlq`. Cada cola declara `x-dead-letter-exchange: musicapp.dlx`.
 
@@ -55,3 +55,6 @@ pip install "jsonschema[format]"
 python contracts/validate.py               # todos los ejemplos
 python contracts/validate.py evento.json   # un archivo concreto
 ```
+
+Notificaciones tambien consume eventos de audio: guarda el propietario de
+`audio.uploaded.v1` y notifica con `audio.ready.v1` o `audio.failed.v1`.
