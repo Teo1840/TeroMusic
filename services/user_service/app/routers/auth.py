@@ -1,6 +1,8 @@
 from fastapi import (
     APIRouter,
+    BackgroundTasks,
     Depends,
+    Header,
     HTTPException,
     Response,
     status
@@ -9,6 +11,7 @@ from fastapi import (
 from sqlalchemy.orm import Session
 
 from ..database import get_db
+from ..events import publish_user_registered
 from ..models import User
 from ..schemas import (
     UserRegister,
@@ -33,7 +36,9 @@ router = APIRouter()
 )
 def register(
     data: UserRegister,
-    db: Session = Depends(get_db)
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    x_correlation_id: str | None = Header(default=None)
 ):
 
     existing_user = (
@@ -57,6 +62,14 @@ def register(
     db.add(user)
     db.commit()
     db.refresh(user)
+
+    # Se publica después de responder: el alta no espera a RabbitMQ.
+    background_tasks.add_task(
+        publish_user_registered,
+        user.id,
+        user.email,
+        x_correlation_id
+    )
 
     token = create_access_token(
         user.id,
