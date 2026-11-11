@@ -14,7 +14,10 @@ export default function NavBar() {
 
     return (
         <nav className="flex items-center gap-6 px-8 py-3 border-b">
-            <span className="font-bold">TeroMusic</span>
+            <span className="flex items-center gap-2 font-bold">
+                <img src="/tero.svg" alt="" className="h-7 w-7" />
+                TeroMusic
+            </span>
             <NavLink to="/catalog" className={linkClass}>Catálogo</NavLink>
             <NavLink to="/rooms" className={linkClass}>Salas en vivo</NavLink>
             <NavLink to="/metrics" className={linkClass}>Métricas</NavLink>
