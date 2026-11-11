@@ -1,13 +1,30 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import api from "../api/client";
+import { PauseIcon, PlayIcon, PlaybackIcon, VolumeIcon } from "../components/Icons";
 import { usePlayTracking, useSignedStreamUrl } from "../lib/audio";
 import { positionAt, useRoom } from "../lib/room";
 
-// Sincronización: más de esto de diferencia → salto directo a la posición correcta.
-const HARD_DRIFT_SEC = 0.5;
-// Entre SOFT y HARD: se acelera o frena un 5 % hasta alcanzar (no se nota al oído).
-const SOFT_DRIFT_SEC = 0.05;
+// Sincronización (ver services/rooms_service/README.md, "Cómo se sincroniza").
+// Más de esto de diferencia → salto directo a la posición correcta.
+const HARD_DRIFT_SEC = 1;
+// Se empieza a corregir con velocidad (±5 %) al pasar START y se deja al bajar de STOP.
+// El margen entre los dos evita cambiar de velocidad todo el tiempo (eso hace que se trabe).
+const SOFT_START_SEC = 0.15;
+const SOFT_STOP_SEC = 0.03;
+// Después de un salto o de arrancar, se espera a que el audio se acomode antes de medir.
+const SETTLE_MS = 2000;
+// Cantidad de mediciones para la mediana (en celulares currentTime es poco preciso).
+const SAMPLES = 5;
+
+function median(values) {
+    const sorted = [...values].sort((a, b) => a - b);
+    return sorted[Math.floor(sorted.length / 2)];
+}
+
+function setRate(audio, rate) {
+    if (audio.playbackRate !== rate) audio.playbackRate = rate;
+}
 
 function formatTime(seconds) {
     if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
@@ -51,7 +68,15 @@ export default function Room() {
     const playbackRef = useRef(playback);
     playbackRef.current = playback;
 
+    // Estado del corrector: mediciones recientes, si está corrigiendo y hasta cuándo esperar.
+    const sync = useRef({ samples: [], correcting: false, settleUntil: 0 });
+    const [driftMs, setDriftMs] = useState(null);
+
     useEffect(() => {
+        const settle = () => {
+            sync.current = { samples: [], correcting: false, settleUntil: performance.now() + SETTLE_MS };
+        };
+
         const timer = setInterval(() => {
             const now = serverNow();
             setClockNow(now);
@@ -59,34 +84,65 @@ export default function Room() {
             const audio = audioRef.current;
             const pb = playbackRef.current;
             if (!audio || !pb?.song_id || audio.readyState < 1) return;
+            audio.preservesPitch = true;
 
             const expected = positionAt(pb, now) / 1000;
             const duration = pb.duration_sec || audio.duration || Infinity;
             // Al cambiar de canción hay un margen (updated_at en el futuro) para que todos carguen.
             const shouldPlay = pb.playing && now >= pb.updated_at_ms && expected < duration - 0.25;
-            const drift = expected - audio.currentTime;
 
-            if (Math.abs(drift) > (shouldPlay ? HARD_DRIFT_SEC : 0.1)) {
-                audio.currentTime = expected;
-                audio.playbackRate = 1;
-            } else if (shouldPlay && Math.abs(drift) > SOFT_DRIFT_SEC) {
-                audio.playbackRate = drift > 0 ? 1.05 : 0.95;
-            } else {
-                audio.playbackRate = 1;
+            // En pausa: quieto en la posición correcta.
+            if (!shouldPlay) {
+                if (!audio.paused) audio.pause();
+                if (Math.abs(expected - audio.currentTime) > 0.1) audio.currentTime = expected;
+                setRate(audio, 1);
+                setDriftMs(null);
+                return;
             }
 
-            if (shouldPlay && audio.paused) {
+            // Tiene que sonar y está quieto: se ubica y arranca.
+            if (audio.paused) {
+                if (Math.abs(expected - audio.currentTime) > 0.1) audio.currentTime = expected;
                 audio.play()
-                    .then(() => setBlocked(false))
+                    .then(() => {
+                        setBlocked(false);
+                        settle();
+                    })
                     .catch((err) => {
                         if (err.name === "NotAllowedError") setBlocked(true);
                     });
-            } else if (!shouldPlay && !audio.paused) {
-                audio.pause();
+                return;
             }
+
+            // Sonando: no se mide mientras se acomoda, salta o carga.
+            const s = sync.current;
+            if (performance.now() < s.settleUntil || audio.seeking || audio.readyState < 3) return;
+
+            s.samples.push(expected - audio.currentTime);
+            if (s.samples.length > SAMPLES) s.samples.shift();
+            if (s.samples.length < 3) return;
+
+            const drift = median(s.samples);
+            setDriftMs(Math.round(drift * 1000));
+
+            if (Math.abs(drift) > HARD_DRIFT_SEC) {
+                audio.currentTime = expected;
+                setRate(audio, 1);
+                settle();
+                return;
+            }
+
+            if (!s.correcting && Math.abs(drift) > SOFT_START_SEC) s.correcting = true;
+            if (s.correcting && Math.abs(drift) < SOFT_STOP_SEC) s.correcting = false;
+            setRate(audio, s.correcting ? (drift > 0 ? 1.05 : 0.95) : 1);
         }, 250);
         return () => clearInterval(timer);
     }, [serverNow]);
+
+    // Un cambio de canción o un salto del anfitrión: medir de nuevo desde cero.
+    useEffect(() => {
+        sync.current = { samples: [], correcting: false, settleUntil: performance.now() + SETTLE_MS };
+    }, [playback?.song_id, playback?.updated_at_ms]);
 
     useEffect(() => {
         if (audioRef.current) audioRef.current.volume = volume;
@@ -167,10 +223,16 @@ export default function Room() {
 
                 <p className="text-lg">
                     {playback.title
-                        ? <>{playback.playing ? "▶" : "⏸"} <strong>{playback.title}</strong></>
+                        ? <><PlaybackIcon playing={playback.playing} /> <strong>{playback.title}</strong></>
                         : "Todavía no hay música."}
                     {startingIn > 0 && <span className="text-gray-500"> · arranca en {startingIn} s</span>}
                 </p>
+
+                {playback.playing && driftMs !== null && (
+                    <p className="text-xs text-gray-500">
+                        Sincronización: {Math.abs(driftMs) <= 150 ? "en sincronía" : "ajustando"} ({driftMs > 0 ? "+" : ""}{driftMs} ms)
+                    </p>
+                )}
 
                 {songId && (
                     <div className="flex items-center gap-2">
@@ -195,14 +257,16 @@ export default function Room() {
                     {canControl && songId && (
                         <button
                             onClick={() => send({ type: playback.playing ? "pause" : "play" })}
-                            className="bg-black text-white px-4 py-2 rounded"
+                            className="inline-flex items-center gap-2 bg-black text-white px-4 py-2 rounded"
                         >
-                            {playback.playing ? "Pausa" : "Play"}
+                            {playback.playing
+                                ? <><PauseIcon /> Pausa</>
+                                : <><PlayIcon /> Play</>}
                         </button>
                     )}
 
                     <label className="flex items-center gap-2 text-sm">
-                        Volumen
+                        <VolumeIcon /> Volumen
                         <input
                             type="range"
                             min={0}
@@ -214,8 +278,11 @@ export default function Room() {
                     </label>
 
                     {blocked && (
-                        <button onClick={unlockAudio} className="bg-orange-500 text-white px-4 py-2 rounded">
-                            🔊 Activar audio
+                        <button
+                            onClick={unlockAudio}
+                            className="inline-flex items-center gap-2 bg-orange-500 text-white px-4 py-2 rounded"
+                        >
+                            <VolumeIcon /> Activar audio
                         </button>
                     )}
                 </div>

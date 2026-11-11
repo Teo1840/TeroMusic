@@ -155,20 +155,27 @@ diferencia = hora_servidor + (ida_y_vuelta / 2) − hora_cliente
 Se queda con la medición de menor ida y vuelta, que es la más precisa, y repite cada 10 s
 ([frontend/src/lib/room.js](../../frontend/src/lib/room.js)).
 
-**3. Cada 250 ms el reproductor se corrige solo** ([frontend/src/pages/Room.jsx](../../frontend/src/pages/Room.jsx)):
+**3. Cada 250 ms el reproductor se corrige solo** ([frontend/src/pages/Room.jsx](../../frontend/src/pages/Room.jsx)).
+Usa la **mediana de las últimas 5 mediciones**, porque en celulares `currentTime` es poco preciso:
 
-| Diferencia con la posición esperada | Corrección |
+| Desfase | Corrección |
 |---|---|
-| menos de 50 ms | Nada |
-| entre 50 y 500 ms | Acelera o frena un 5 % hasta alcanzar. No se nota al oído |
-| más de 500 ms | Salta directo a la posición correcta |
+| hasta 150 ms | Nada (no se nota al oído) |
+| más de 150 ms | Acelera o frena un 5 % hasta bajar de 30 ms. No se nota al oído |
+| más de 1 s | Salta directo a la posición correcta |
+
+- **Histéresis.** Empieza a corregir a los 150 ms y recién deja de hacerlo por debajo de 30 ms.
+  Si cambiara de velocidad cada vez que el desfase cruza un único umbral, el audio se trabaría.
+- **Espera de 2 s** después de un salto, de arrancar o de un cambio del anfitrión, para que el
+  audio se acomode antes de volver a medir. Tampoco mide mientras el audio está cargando.
+- La sala muestra el desfase en vivo ("Sincronización: en sincronía (+12 ms)").
 
 **4. Margen al cambiar de canción.** `set_song` programa el arranque 1,5 s en el futuro
 (`updated_at_ms = ahora + 1500`). Así todos los navegadores alcanzan a cargar el audio y
 empiezan juntos.
 
 **5. Autoplay.** Los navegadores no dejan reproducir sonido sin que el usuario toque algo.
-Si lo bloquean, aparece el botón **"🔊 Activar audio"**.
+Si lo bloquean, aparece el botón **"Activar audio"**.
 
 ---
 
