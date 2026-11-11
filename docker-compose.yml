@@ -230,8 +230,10 @@ services:
       DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-adminpassword}@postgres:5432/${POSTGRES_DB:-streaming_db}
       JWT_SECRET_KEY: ${JWT_SECRET}
       ACCESS_TOKEN_EXPIRE_MINUTES: 60
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASS:-guest}@rabbitmq:5672/
     depends_on:
       - postgres
+      - rabbitmq
     ports:
       - "127.0.0.1:8011:8000"
 

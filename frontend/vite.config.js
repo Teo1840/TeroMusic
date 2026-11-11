@@ -13,7 +13,9 @@ export default defineConfig({
         proxy: {
             "/api": {
                 target: "http://gateway:80",
-                changeOrigin: true
+                changeOrigin: true,
+                // Manda X-Forwarded-For: el gateway limita pedidos por IP del navegador.
+                xfwd: true
             }
         }
     }

@@ -5,6 +5,7 @@ const cache = require('./cache');
 const catalog = require('./catalog');
 const config = require('./config');
 const events = require('./events');
+const signed = require('./signed');
 const storage = require('./storage');
 const { parseRange, chunksFor, RangeNotSatisfiable } = require('./range');
 
@@ -45,11 +46,39 @@ async function publishedSong(songId, res) {
   return song;
 }
 
-// El stream no pide usuario: <audio src> no puede mandar Authorization.
-// La reproduccion se registra aparte con POST /audio/played.
+/** Usuario logueado: devuelve una URL temporal firmada para el stream. */
+app.get('/audio/stream-url/:songId', async (req, res, next) => {
+  const { songId } = req.params;
+  if (!UUID.test(songId)) return res.status(400).json({ detail: 'song_id debe ser un UUID' });
+  try {
+    auth.userIdFrom(req);
+  } catch (error) {
+    if (!(error instanceof auth.Unauthorized)) return next(error);
+    return res.status(401).json({ detail: error.message });
+  }
+  try {
+    const song = await publishedSong(songId, res);
+    if (!song) return undefined;
+    const { url, expiresAt } = signed.signedUrl(songId);
+    return res.json({ url, expires_at: expiresAt });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+// <audio src> no puede mandar Authorization: el permiso viaja en la URL firmada
+// (?exp&sig, ver signed.js). La reproduccion se registra aparte con POST /audio/played.
 app.get('/audio/stream/:songId', async (req, res, next) => {
   const { songId } = req.params;
   if (!UUID.test(songId)) return res.status(400).json({ detail: 'song_id debe ser un UUID' });
+
+  try {
+    signed.verify(songId, req.query);
+  } catch (error) {
+    if (!(error instanceof signed.InvalidSignature)) return next(error);
+    const missing = req.query.exp === undefined && req.query.sig === undefined;
+    return res.status(missing ? 401 : 403).json({ detail: error.message });
+  }
 
   const bitrate = req.query.bitrate === undefined ? config.defaultBitrate : Number(req.query.bitrate);
   if (!config.bitrates.includes(bitrate)) {

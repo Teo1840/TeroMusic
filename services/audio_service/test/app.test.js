@@ -9,6 +9,7 @@ const auth = require('../src/auth');
 const cache = require('../src/cache');
 const catalog = require('../src/catalog');
 const events = require('../src/events');
+const signed = require('../src/signed');
 const storage = require('../src/storage');
 
 const SONG = 'c3d4e5f6-1a2b-4c3d-8e9f-0a1b2c3d4e5f';
@@ -62,33 +63,71 @@ function played(body, { authorization = `Bearer ${auth.sign({ sub: USER })}` } =
   return fetch(`${base}/audio/played`, { method: 'POST', headers, body: JSON.stringify(body) });
 }
 
+/** URL del stream con firma valida (como la que entrega /audio/stream-url). */
+function streamUrl(id, extra = '') {
+  const query = signed.signedUrl(id).url.split('?')[1];
+  return `${base}/audio/stream/${id}?${query}${extra}`;
+}
+
 const valid = { song_id: SONG, started_at: '2026-11-09T15:04:05Z', listened_sec: 42.5, completed: false };
 
 test('stream: lee la rendition del catalogo segun ?bitrate', async () => {
-  let response = await fetch(`${base}/audio/stream/${SONG}`, { headers: { Range: 'bytes=0-4' } });
+  let response = await fetch(streamUrl(SONG), { headers: { Range: 'bytes=0-4' } });
   assert.equal(response.status, 206);
   assert.equal(response.headers.get('content-range'), `bytes 0-4/${AUDIO.length}`);
   assert.equal(await response.text(), '01234');
 
-  response = await fetch(`${base}/audio/stream/${SONG}?bitrate=320`);
+  response = await fetch(streamUrl(SONG, '&bitrate=320'));
   assert.equal(response.status, 206);
   await response.arrayBuffer();
   assert.deepEqual(reads, [`processed/${SONG}/128.mp3`, `processed/${SONG}/320.mp3`]);
 
-  assert.equal((await fetch(`${base}/audio/stream/${SONG}?bitrate=64`)).status, 400);
+  assert.equal((await fetch(streamUrl(SONG, '&bitrate=64'))).status, 400);
 });
 
 test('stream: pedir audio ya no publica song.played', async () => {
   published.length = 0;
-  await (await fetch(`${base}/audio/stream/${SONG}`, { headers: { Range: 'bytes=0-' } })).arrayBuffer();
+  await (await fetch(streamUrl(SONG), { headers: { Range: 'bytes=0-' } })).arrayBuffer();
   assert.equal(published.length, 0);
 });
 
 test('stream: 404 si no existe, 409 si no esta PUBLICADO', async () => {
-  assert.equal((await fetch(`${base}/audio/stream/${MISSING}`)).status, 404);
-  const response = await fetch(`${base}/audio/stream/${DRAFT}`);
+  assert.equal((await fetch(streamUrl(MISSING))).status, 404);
+  const response = await fetch(streamUrl(DRAFT));
   assert.equal(response.status, 409);
   assert.equal((await response.json()).status, 'BORRADOR');
+});
+
+test('stream: 401 sin firma, 403 con firma invalida, vencida o de otra cancion', async () => {
+  assert.equal((await fetch(`${base}/audio/stream/${SONG}`)).status, 401);
+
+  const query = signed.signedUrl(SONG).url.split('?')[1];
+  assert.equal((await fetch(`${base}/audio/stream/${SONG}?${query}x`)).status, 403);
+  assert.equal((await fetch(`${base}/audio/stream/${DRAFT}?${query}`)).status, 403);
+
+  const expired = signed.signedUrl(SONG, { now: Date.now() - 2 * 3600 * 1000 }).url.split('?')[1];
+  assert.equal((await fetch(`${base}/audio/stream/${SONG}?${expired}`)).status, 403);
+});
+
+test('stream-url: con login devuelve una URL firmada que funciona', async () => {
+  const headers = { Authorization: `Bearer ${auth.sign({ sub: USER })}` };
+  const response = await fetch(`${base}/audio/stream-url/${SONG}`, { headers });
+  assert.equal(response.status, 200);
+  const { url, expires_at: expiresAt } = await response.json();
+  assert.ok(url.startsWith(`/api/v1/audio/stream/${SONG}?exp=`), url);
+  assert.match(url, /\?exp=\d+&sig=[\w-]+$/);
+  assert.ok(new Date(expiresAt) > new Date());
+
+  const stream = await fetch(`${base}/audio/stream/${SONG}?${url.split('?')[1]}`, { headers: { Range: 'bytes=0-1' } });
+  assert.equal(stream.status, 206);
+  await stream.arrayBuffer();
+});
+
+test('stream-url: 401 sin login, 404/409 si la cancion no se puede escuchar', async () => {
+  assert.equal((await fetch(`${base}/audio/stream-url/${SONG}`)).status, 401);
+  const headers = { Authorization: `Bearer ${auth.sign({ sub: USER })}` };
+  assert.equal((await fetch(`${base}/audio/stream-url/${MISSING}`, { headers })).status, 404);
+  assert.equal((await fetch(`${base}/audio/stream-url/${DRAFT}`, { headers })).status, 409);
 });
 
 test('played: publica el evento con el user_id del JWT', async () => {
@@ -130,7 +169,7 @@ test('catalogo caido: 503', async () => {
     throw new catalog.CatalogUnavailable('caido');
   };
   try {
-    assert.equal((await fetch(`${base}/audio/stream/${SONG}`)).status, 503);
+    assert.equal((await fetch(streamUrl(SONG))).status, 503);
     assert.equal((await played(valid)).status, 503);
   } finally {
     catalog.getSong = fakeGetSong;

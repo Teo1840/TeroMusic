@@ -31,6 +31,12 @@ module.exports = {
   jwtSecret: env.JWT_SECRET || '',
   jwtUserClaim: env.JWT_USER_CLAIM || 'sub',
 
+  // URLs firmadas del stream: mismo secreto que el JWT, vencen a los STREAM_URL_TTL_SEC.
+  streamUrlSecret: env.STREAM_URL_SECRET || env.JWT_SECRET || '',
+  streamUrlTtlSec: int('STREAM_URL_TTL_SEC', 3600),
+  // Ruta publica (via gateway) que se devuelve en la URL firmada.
+  publicStreamPath: (env.PUBLIC_STREAM_PATH || '/api/v1/audio/stream').replace(/\/+$/, ''),
+
   redisUrl: env.REDIS_URL || 'redis://redis:6379',
   cacheTtlSec: int('CACHE_TTL_SEC', 3600),
   // 1 MiB: el tamano del ejemplo de la consigna (bytes=0-1048575).

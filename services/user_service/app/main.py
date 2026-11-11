@@ -1,8 +1,12 @@
+import logging
+
 from fastapi import FastAPI
 
 from .database import Base, engine
 from .routers.auth import router as auth_router
 
+
+logging.basicConfig(level=logging.INFO)
 
 Base.metadata.create_all(bind=engine)
 
