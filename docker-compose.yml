@@ -199,13 +199,13 @@ services:
       context: ./services/user_service
     container_name: user_service
     environment:
-      DATABASE_URL: postgresql://admin:adminpassword@postgres:5432/streaming_db
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-adminpassword}@postgres:5432/${POSTGRES_DB:-streaming_db}
+      JWT_SECRET_KEY: ${JWT_SECRET}
       ACCESS_TOKEN_EXPIRE_MINUTES: 60
     depends_on:
       - postgres
     ports:
-      - "127.0.0.1:8001:8000"
+      - "127.0.0.1:8011:8000"
 
   gateway:
     build:
@@ -217,6 +217,7 @@ services:
     depends_on:
       - user_service
       - catalog_service
+      - audio_service
       - metrics_service
 
   frontend:

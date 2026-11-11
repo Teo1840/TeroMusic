@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import api from "../api/client";
 import AudioPlayer from "../components/AudioPlayer";
+import UploadSong from "../components/UploadSong";
 
 export default function Catalog() {
 
@@ -9,27 +10,26 @@ export default function Catalog() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
 
-    useEffect(() => {
+    async function loadSongs() {
+        try {
+            const response = await api.get("/catalog/songs");
 
-        async function loadSongs() {
-            try {
-                const response = await api.get("/catalog/songs");
+            setSongs(response.data);
+            setError("");
 
-                setSongs(response.data);
+        } catch (err) {
+            setError(
+                err.response?.data?.detail ||
+                "No se pudo cargar el catálogo."
+            );
 
-            } catch (err) {
-                setError(
-                    err.response?.data?.detail ||
-                    "No se pudo cargar el catálogo."
-                );
-
-            } finally {
-                setLoading(false);
-            }
+        } finally {
+            setLoading(false);
         }
+    }
 
+    useEffect(() => {
         loadSongs();
-
     }, []);
 
     return (
@@ -38,6 +38,8 @@ export default function Catalog() {
             <h1 className="text-3xl font-bold mb-6">
                 Catálogo
             </h1>
+
+            <UploadSong onPublished={loadSongs} />
 
             {loading && (
                 <p>Cargando canciones...</p>
