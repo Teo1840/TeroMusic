@@ -18,6 +18,7 @@ services:
       timeout: 5s
       retries: 10
 
+
   rabbitmq:
     image: rabbitmq:3-management-alpine
     container_name: rabbitmq_broker
@@ -101,7 +102,7 @@ services:
       MINIO_ACCESS_KEY: ${MINIO_USER}
       MINIO_SECRET_KEY: ${MINIO_PASS}
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -220,6 +221,44 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+
+  user_service:
+    build:
+      context: ./services/user_service
+    container_name: user_service
+    environment:
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-adminpassword}@postgres:5432/${POSTGRES_DB:-streaming_db}
+      JWT_SECRET_KEY: ${JWT_SECRET}
+      ACCESS_TOKEN_EXPIRE_MINUTES: 60
+    depends_on:
+      - postgres
+    ports:
+      - "127.0.0.1:8011:8000"
+
+  gateway:
+    build:
+      context: ./gateway
+    container_name: gateway
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:80"
+    depends_on:
+      - user_service
+      - catalog_service
+      - audio_service
+      - metrics_service
+      - notification_service
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: frontend
+    depends_on:
+      - gateway
+    ports:
+      - "127.0.0.1:5173:5173"
+
+
 
 volumes:
   postgres_data:
