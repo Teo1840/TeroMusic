@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import api from "../api/client";
-import { PauseIcon, PlayIcon, PlaybackIcon, VolumeIcon } from "../components/Icons";
+import { NextIcon, PauseIcon, PlayIcon, PlaybackIcon, VolumeIcon, VolumeOffIcon } from "../components/Icons";
+import RoomQueue from "../components/RoomQueue";
 import { usePlayTracking, useSignedStreamUrl } from "../lib/audio";
 import { positionAt, useRoom } from "../lib/room";
 
@@ -56,6 +57,7 @@ export default function Room() {
 
     const [blocked, setBlocked] = useState(false);   // el navegador bloqueó el autoplay
     const [volume, setVolume] = useState(1);
+    const [muted, setMuted] = useState(false);
     const [clockNow, setClockNow] = useState(0);     // para redibujar la barra de progreso
     const [dragSec, setDragSec] = useState(null);    // posición mientras se arrastra la barra
     const [songs, setSongs] = useState([]);
@@ -67,9 +69,13 @@ export default function Room() {
     // El bucle de sincronización lee siempre el estado más nuevo.
     const playbackRef = useRef(playback);
     playbackRef.current = playback;
+    const sendRef = useRef(send);
+    sendRef.current = send;
 
     // Estado del corrector: mediciones recientes, si está corrigiendo y hasta cuándo esperar.
     const sync = useRef({ samples: [], correcting: false, settleUntil: 0 });
+    // Último "terminó la canción" avisado, para no repetirlo.
+    const endedSent = useRef("");
     const [driftMs, setDriftMs] = useState(null);
 
     useEffect(() => {
@@ -88,8 +94,22 @@ export default function Room() {
 
             const expected = positionAt(pb, now) / 1000;
             const duration = pb.duration_sec || audio.duration || Infinity;
+
+            // Terminó según el reloj del servidor: se deja que el audio termine solo
+            // (así cuenta como escuchada completa) y se avisa para que arranque la siguiente.
+            // El servidor lo verifica y, si varios avisan a la vez, avanza una sola vez.
+            if (pb.playing && expected >= duration - 0.05) {
+                const key = `${pb.song_id}:${pb.updated_at_ms}`;
+                if (endedSent.current !== key) {
+                    endedSent.current = key;
+                    sendRef.current({ type: "ended", song_id: pb.song_id, updated_at_ms: pb.updated_at_ms });
+                }
+                setDriftMs(null);
+                return;
+            }
+
             // Al cambiar de canción hay un margen (updated_at en el futuro) para que todos carguen.
-            const shouldPlay = pb.playing && now >= pb.updated_at_ms && expected < duration - 0.25;
+            const shouldPlay = pb.playing && now >= pb.updated_at_ms;
 
             // En pausa: quieto en la posición correcta.
             if (!shouldPlay) {
@@ -103,6 +123,8 @@ export default function Room() {
             // Tiene que sonar y está quieto: se ubica y arranca.
             if (audio.paused) {
                 if (Math.abs(expected - audio.currentTime) > 0.1) audio.currentTime = expected;
+                // El archivo terminó un poco antes que la duración del catálogo: no volver a empezar.
+                if (audio.ended) return;
                 audio.play()
                     .then(() => {
                         setBlocked(false);
@@ -145,14 +167,15 @@ export default function Room() {
     }, [playback?.song_id, playback?.updated_at_ms]);
 
     useEffect(() => {
-        if (audioRef.current) audioRef.current.volume = volume;
-    }, [volume, src]);
+        if (!audioRef.current) return;
+        audioRef.current.volume = volume;
+        audioRef.current.muted = muted;
+    }, [volume, muted, src]);
 
-    // Canciones para elegir (solo quien controla la música).
+    // Canciones del catálogo: para poner, agregar a la cola o sugerir.
     useEffect(() => {
-        if (!canControl) return;
         api.get("/catalog/songs").then(({ data }) => setSongs(data)).catch(() => {});
-    }, [canControl]);
+    }, []);
 
     function unlockAudio() {
         audioRef.current?.play().then(() => setBlocked(false)).catch(() => {});
@@ -189,7 +212,7 @@ export default function Room() {
         return <p className="p-8">Conectando con la sala...</p>;
     }
 
-    const { room, listeners } = state;
+    const { room, listeners, queue, suggestions } = state;
     const durationSec = playback.duration_sec || audioRef.current?.duration || 0;
     const positionSec = dragSec ?? positionAt(playback, clockNow || serverNow()) / 1000;
     const startingIn = playback.playing ? Math.ceil((playback.updated_at_ms - clockNow) / 1000) : 0;
@@ -265,17 +288,39 @@ export default function Room() {
                         </button>
                     )}
 
-                    <label className="flex items-center gap-2 text-sm">
-                        <VolumeIcon /> Volumen
+                    {canControl && queue.length > 0 && (
+                        <button
+                            onClick={() => send({ type: "next" })}
+                            className="inline-flex items-center gap-2 border px-4 py-2 rounded"
+                        >
+                            <NextIcon /> Siguiente
+                        </button>
+                    )}
+
+                    <div className="flex items-center gap-2 text-sm">
+                        <button
+                            type="button"
+                            onClick={() => setMuted((m) => !m)}
+                            aria-label={muted ? "Activar sonido" : "Silenciar"}
+                            aria-pressed={muted}
+                            title={muted ? "Activar sonido" : "Silenciar"}
+                            className="p-1 rounded hover:bg-gray-100"
+                        >
+                            {muted ? <VolumeOffIcon size={18} /> : <VolumeIcon size={18} />}
+                        </button>
                         <input
                             type="range"
                             min={0}
                             max={1}
                             step={0.05}
-                            value={volume}
-                            onChange={(e) => setVolume(Number(e.target.value))}
+                            value={muted ? 0 : volume}
+                            onChange={(e) => {
+                                setVolume(Number(e.target.value));
+                                setMuted(false);
+                            }}
+                            aria-label="Volumen"
                         />
-                    </label>
+                    </div>
 
                     {blocked && (
                         <button
@@ -289,7 +334,7 @@ export default function Room() {
 
                 {canControl && (
                     <label className="block text-sm">
-                        Poner canción:{" "}
+                        Poner ahora:{" "}
                         <select
                             value=""
                             onChange={(e) => e.target.value && send({ type: "set_song", song_id: e.target.value })}
@@ -320,6 +365,15 @@ export default function Room() {
                     />
                 )}
             </div>
+
+            <RoomQueue
+                queue={queue}
+                suggestions={suggestions}
+                songs={songs}
+                canControl={canControl}
+                me={me}
+                send={send}
+            />
 
             <h2 className="text-xl font-semibold mb-2">
                 Escuchando ({listeners.length} / {room.max_listeners})

@@ -52,6 +52,61 @@ export function VolumeIcon(props) {
     );
 }
 
+export function VolumeOffIcon(props) {
+    return (
+        <Icon {...props}>
+            <path d="M4 9.5v5a1 1 0 0 0 1 1h3l4.4 3.67A1 1 0 0 0 14 18.4V5.6a1 1 0 0 0-1.6-.77L8 8.5H5a1 1 0 0 0-1 1z" />
+            <path
+                d="M17 9.5l5 5M22 9.5l-5 5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+            />
+        </Icon>
+    );
+}
+
+/** Íconos de trazo (líneas) para acciones de lista. */
+function StrokeIcon({ children, ...props }) {
+    return (
+        <Icon {...props}>
+            <g fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                {children}
+            </g>
+        </Icon>
+    );
+}
+
+export function NextIcon(props) {
+    return (
+        <Icon {...props}>
+            <path d="M5 6.14v11.72a1 1 0 0 0 1.52.85l9.2-5.86a1 1 0 0 0 0-1.7l-9.2-5.86A1 1 0 0 0 5 6.14z" />
+            <rect x="17" y="5" width="2.5" height="14" rx="1" />
+        </Icon>
+    );
+}
+
+export function ArrowUpIcon(props) {
+    return <StrokeIcon {...props}><path d="M12 19V5M6 11l6-6 6 6" /></StrokeIcon>;
+}
+
+export function ArrowDownIcon(props) {
+    return <StrokeIcon {...props}><path d="M12 5v14M6 13l6 6 6-6" /></StrokeIcon>;
+}
+
+export function CloseIcon(props) {
+    return <StrokeIcon {...props}><path d="M6 6l12 12M18 6L6 18" /></StrokeIcon>;
+}
+
+export function CheckIcon(props) {
+    return <StrokeIcon {...props}><path d="M5 12.5l4.5 4.5L19 7.5" /></StrokeIcon>;
+}
+
+export function PlusIcon(props) {
+    return <StrokeIcon {...props}><path d="M12 5v14M5 12h14" /></StrokeIcon>;
+}
+
 /** Play o pausa según el estado. */
 export function PlaybackIcon({ playing, ...props }) {
     return playing ? <PlayIcon {...props} /> : <PauseIcon {...props} />;

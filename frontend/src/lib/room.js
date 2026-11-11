@@ -26,7 +26,7 @@ export function positionAt(playback, now) {
 
 export function useRoom(roomId) {
 
-    const [state, setState] = useState(null);      // { room, playback, listeners }
+    const [state, setState] = useState(null);      // { room, playback, queue, suggestions, listeners }
     const [me, setMe] = useState(null);            // { user_id, name }
     const [status, setStatus] = useState("connecting");
     const [error, setError] = useState("");        // error de un comando (se borra solo)
@@ -84,7 +84,13 @@ export function useRoom(roomId) {
                         };
                     }
                 } else if (message.type === "state") {
-                    setState({ room: message.room, playback: message.playback, listeners: message.listeners });
+                    setState({
+                        room: message.room,
+                        playback: message.playback,
+                        queue: message.queue ?? [],
+                        suggestions: message.suggestions ?? [],
+                        listeners: message.listeners
+                    });
                 } else if (message.type === "error") {
                     setError(message.detail);
                     setTimeout(() => setError(""), 4000);
