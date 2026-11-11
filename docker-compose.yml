@@ -290,7 +290,9 @@ services:
     depends_on:
       - gateway
     ports:
-      - "127.0.0.1:5173:5173"
+      # Por defecto solo esta PC. Para una demo en la red local: FRONTEND_BIND=0.0.0.0 en .env
+      # (es la única puerta abierta: el resto de los servicios sigue en 127.0.0.1).
+      - "${FRONTEND_BIND:-127.0.0.1}:5173:5173"
 
 
 
