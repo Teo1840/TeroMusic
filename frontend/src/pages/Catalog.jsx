@@ -44,9 +44,9 @@ export default function Catalog() {
     }, []);
 
     return (
-        <div className="p-8">
+        <div className="p-4 sm:p-8">
 
-            <h1 className="text-3xl font-bold mb-6">
+            <h1 className="text-2xl sm:text-3xl font-bold mb-6">
                 Catálogo
             </h1>
 
@@ -86,16 +86,16 @@ export default function Catalog() {
 
                         <div
                             key={song.id}
-                            className="border rounded p-4"
+                            className="border rounded p-4 min-w-0"
                         >
 
-                            <h2 className="font-semibold">
+                            <h2 className="font-semibold break-words">
                                 {song.title}
                             </h2>
 
                             <AudioPlayer songId={song.id} />
 
-                            <p>
+                            <p className="text-xs text-gray-500 break-all mt-2">
                                 {song.artist_id}
                             </p>
 

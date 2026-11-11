@@ -166,6 +166,13 @@ export default function Room() {
         sync.current = { samples: [], correcting: false, settleUntil: performance.now() + SETTLE_MS };
     }, [playback?.song_id, playback?.updated_at_ms]);
 
+    // Al cambiar de canción: soltar un arrastre que quedó colgado (p. ej. un toque
+    // cancelado en el celular) y redibujar ya con la hora actual, sin esperar al bucle.
+    useEffect(() => {
+        setDragSec(null);
+        setClockNow(serverNow());
+    }, [songId, serverNow]);
+
     useEffect(() => {
         if (!audioRef.current) return;
         audioRef.current.volume = volume;
@@ -201,7 +208,7 @@ export default function Room() {
 
     if (fatal) {
         return (
-            <div className="p-8">
+            <div className="p-4 sm:p-8">
                 <p className="text-xl mb-4">{fatal}</p>
                 <Link to="/rooms" className="underline text-blue-600">Volver a las salas</Link>
             </div>
@@ -209,20 +216,23 @@ export default function Room() {
     }
 
     if (!state) {
-        return <p className="p-8">Conectando con la sala...</p>;
+        return <p className="p-4 sm:p-8">Conectando con la sala...</p>;
     }
 
     const { room, listeners, queue, suggestions } = state;
-    const durationSec = playback.duration_sec || audioRef.current?.duration || 0;
-    const positionSec = dragSec ?? positionAt(playback, clockNow || serverNow()) / 1000;
+    // Sin duración en el catálogo se usa la del archivo, solo si ya es el de esta canción.
+    const fileDuration = src ? audioRef.current?.duration : NaN;
+    const durationSec = playback.duration_sec || (Number.isFinite(fileDuration) ? fileDuration : 0);
+    const rawPositionSec = dragSec ?? positionAt(playback, clockNow || serverNow()) / 1000;
+    const positionSec = Math.max(0, durationSec ? Math.min(rawPositionSec, durationSec) : rawPositionSec);
     const startingIn = playback.playing ? Math.ceil((playback.updated_at_ms - clockNow) / 1000) : 0;
 
     return (
-        <div className="p-8 max-w-4xl">
+        <div className="p-4 sm:p-8 max-w-4xl">
 
             <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
-                <h1 className="text-3xl font-bold">{room.name}</h1>
-                <div className="flex gap-2">
+                <h1 className="text-2xl sm:text-3xl font-bold break-words min-w-0">{room.name}</h1>
+                <div className="flex flex-wrap gap-2">
                     <button onClick={copyLink} className="border px-3 py-1 rounded">
                         {copied ? "¡Link copiado!" : "Copiar link"}
                     </button>
@@ -244,7 +254,7 @@ export default function Room() {
 
             <div className="border rounded p-4 mb-6 space-y-3">
 
-                <p className="text-lg">
+                <p className="text-lg break-words">
                     {playback.title
                         ? <><PlaybackIcon playing={playback.playing} /> <strong>{playback.title}</strong></>
                         : "Todavía no hay música."}
@@ -265,12 +275,14 @@ export default function Room() {
                             min={0}
                             max={durationSec || 1}
                             step={0.1}
-                            value={Math.min(positionSec, durationSec || 1)}
+                            value={durationSec ? positionSec : 0}
                             disabled={!canControl}
                             onChange={(e) => setDragSec(Number(e.target.value))}
                             onPointerUp={commitSeek}
+                            onPointerCancel={commitSeek}
                             onKeyUp={commitSeek}
-                            className="flex-1"
+                            onBlur={commitSeek}
+                            className="flex-1 accent-black"
                         />
                         <span className="text-sm w-10">{formatTime(durationSec)}</span>
                     </div>
@@ -297,14 +309,14 @@ export default function Room() {
                         </button>
                     )}
 
-                    <div className="flex items-center gap-2 text-sm">
+                    <div className="flex items-center gap-2 text-sm w-full sm:w-auto">
                         <button
                             type="button"
                             onClick={() => setMuted((m) => !m)}
                             aria-label={muted ? "Activar sonido" : "Silenciar"}
                             aria-pressed={muted}
                             title={muted ? "Activar sonido" : "Silenciar"}
-                            className="p-1 rounded hover:bg-gray-100"
+                            className="p-2 sm:p-1 rounded hover:bg-gray-100"
                         >
                             {muted ? <VolumeOffIcon size={18} /> : <VolumeIcon size={18} />}
                         </button>
@@ -319,6 +331,7 @@ export default function Room() {
                                 setMuted(false);
                             }}
                             aria-label="Volumen"
+                            className="flex-1 sm:flex-none accent-black"
                         />
                     </div>
 
@@ -333,12 +346,12 @@ export default function Room() {
                 </div>
 
                 {canControl && (
-                    <label className="block text-sm">
-                        Poner ahora:{" "}
+                    <label className="flex flex-wrap items-center gap-2 text-sm">
+                        Poner ahora:
                         <select
                             value=""
                             onChange={(e) => e.target.value && send({ type: "set_song", song_id: e.target.value })}
-                            className="border p-1"
+                            className="border p-1 min-w-0 flex-1 sm:flex-none max-w-full"
                         >
                             <option value="">Elegir...</option>
                             {songs.map((song) => (
@@ -383,8 +396,8 @@ export default function Room() {
                 {listeners.map((listener) => {
                     const listenerRole = roleOf(room, listener.user_id);
                     return (
-                        <li key={listener.user_id} className="flex items-center gap-3 border rounded px-3 py-2">
-                            <span className="flex-1">
+                        <li key={listener.user_id} className="flex flex-wrap items-center gap-x-3 gap-y-1 border rounded px-3 py-2">
+                            <span className="flex-1 min-w-0 break-words">
                                 {listener.name}
                                 {listener.user_id === me?.user_id && " (vos)"}
                             </span>
@@ -396,7 +409,7 @@ export default function Room() {
                             {role === "host" && listenerRole === "listener" && (
                                 <button
                                     onClick={() => send({ type: "promote", user_id: listener.user_id })}
-                                    className="text-sm underline"
+                                    className="text-sm underline py-1"
                                 >
                                     Hacer coanfitrión
                                 </button>
@@ -404,7 +417,7 @@ export default function Room() {
                             {role === "host" && listenerRole === "cohost" && (
                                 <button
                                     onClick={() => send({ type: "demote", user_id: listener.user_id })}
-                                    className="text-sm underline text-red-600"
+                                    className="text-sm underline text-red-600 py-1"
                                 >
                                     Quitar coanfitrión
                                 </button>

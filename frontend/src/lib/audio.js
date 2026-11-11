@@ -31,17 +31,21 @@ function reportPlayed(body) {
  */
 export function useSignedStreamUrl(songId, audioRef) {
 
-    const [src, setSrc] = useState(null);
+    // La URL se guarda junto con su canción: al cambiar de canción no se usa la anterior
+    // ni un rato (antes de que corra el efecto) ni si su respuesta llega tarde.
+    const [loaded, setLoaded] = useState({ songId: null, url: null });
+    const currentSong = useRef(songId);
+    currentSong.current = songId;
     const retried = useRef(false);
 
     const loadUrl = async () => {
-        const { data } = await api.get(`/audio/stream-url/${songId}`);
-        setSrc(data.url);
+        const id = songId;
+        const { data } = await api.get(`/audio/stream-url/${id}`);
+        if (currentSong.current === id) setLoaded({ songId: id, url: data.url });
     };
 
     useEffect(() => {
         retried.current = false;
-        setSrc(null);
         if (songId) loadUrl().catch(() => {});
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [songId]);
@@ -61,6 +65,7 @@ export function useSignedStreamUrl(songId, audioRef) {
         retried.current = false;
     };
 
+    const src = songId && loaded.songId === songId ? loaded.url : null;
     return { src, onError, onLoadedData };
 }
 

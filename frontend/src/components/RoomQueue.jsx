@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { ArrowDownIcon, ArrowUpIcon, CheckIcon, CloseIcon, PlusIcon } from "./Icons";
 
 function formatDuration(seconds) {
@@ -14,7 +15,7 @@ function IconButton({ label, onClick, disabled, danger, children }) {
             disabled={disabled}
             aria-label={label}
             title={label}
-            className={`p-1 rounded hover:bg-gray-100 disabled:opacity-30 disabled:hover:bg-transparent ${danger ? "text-red-600" : ""}`}
+            className={`p-2 sm:p-1 rounded hover:bg-gray-100 disabled:opacity-30 disabled:hover:bg-transparent ${danger ? "text-red-600" : ""}`}
         >
             {children}
         </button>
@@ -26,30 +27,62 @@ function IconButton({ label, onClick, disabled, danger, children }) {
  * Anfitrión/coanfitriones: agregan, reordenan, sacan y aceptan/rechazan sugerencias.
  * Oyentes: ven la cola y sugieren canciones.
  */
+// Minúsculas y sin tildes, para que "cancion" encuentre "Canción".
+function normalize(text) {
+    return (text ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+}
+
+const MAX_RESULTS = 10;
+
 export default function RoomQueue({ queue, suggestions, songs, canControl, me, send }) {
+    const [search, setSearch] = useState("");
+    const term = normalize(search);
+    const results = term
+        ? songs.filter((song) => normalize(song.title).includes(term)).slice(0, MAX_RESULTS)
+        : [];
 
     function addSong(songId) {
         if (!songId) return;
         send({ type: canControl ? "queue_add" : "suggest", song_id: songId });
+        setSearch("");
     }
 
     return (
         <div className="border rounded p-4 mb-6 space-y-4">
 
-            <label className="flex flex-wrap items-center gap-2 text-sm">
-                <PlusIcon />
-                {canControl ? "Agregar a la cola:" : "Sugerir canción:"}
-                <select
-                    value=""
-                    onChange={(e) => addSong(e.target.value)}
-                    className="border p-1"
-                >
-                    <option value="">Elegir...</option>
-                    {songs.map((song) => (
-                        <option key={song.id} value={song.id}>{song.title}</option>
-                    ))}
-                </select>
-            </label>
+            <div className="text-sm">
+                <label className="flex flex-wrap items-center gap-2">
+                    <PlusIcon />
+                    {canControl ? "Agregar a la cola:" : "Sugerir canción:"}
+                    <input
+                        type="search"
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        placeholder="Buscar por nombre..."
+                        className="border p-1 min-w-0 flex-1 max-w-full"
+                    />
+                </label>
+
+                {term && (
+                    <ul className="mt-2 border rounded divide-y max-h-60 overflow-y-auto">
+                        {results.length === 0 && (
+                            <li className="px-3 py-2 text-gray-500">No hay canciones con ese nombre.</li>
+                        )}
+                        {results.map((song) => (
+                            <li key={song.id}>
+                                <button
+                                    type="button"
+                                    onClick={() => addSong(song.id)}
+                                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-100"
+                                >
+                                    <span className="flex-1 min-w-0 break-words">{song.title}</span>
+                                    <PlusIcon />
+                                </button>
+                            </li>
+                        ))}
+                    </ul>
+                )}
+            </div>
 
             <div>
                 <h3 className="font-semibold mb-2">A continuación ({queue.length})</h3>
@@ -64,9 +97,9 @@ export default function RoomQueue({ queue, suggestions, songs, canControl, me, s
                     {queue.map((item, index) => (
                         <li key={item.item_id} className="flex items-center gap-2 border rounded px-3 py-1.5">
                             <span className="text-sm text-gray-500 w-5">{index + 1}</span>
-                            <span className="flex-1">
+                            <span className="flex-1 min-w-0 break-words">
                                 {item.title}
-                                <span className="text-xs text-gray-500"> · agregada por {item.added_by.name}</span>
+                                <span className="block text-xs text-gray-500 truncate">agregada por {item.added_by.name}</span>
                             </span>
                             <span className="text-xs text-gray-500">{formatDuration(item.duration_sec)}</span>
                             {canControl && (
@@ -112,10 +145,10 @@ export default function RoomQueue({ queue, suggestions, songs, canControl, me, s
                     <ul className="space-y-1">
                         {suggestions.map((item) => (
                             <li key={item.item_id} className="flex items-center gap-2 border border-dashed rounded px-3 py-1.5">
-                                <span className="flex-1">
+                                <span className="flex-1 min-w-0 break-words">
                                     {item.title}
-                                    <span className="text-xs text-gray-500">
-                                        {" "}· sugerida por {item.added_by.user_id === me?.user_id ? "vos" : item.added_by.name}
+                                    <span className="block text-xs text-gray-500 truncate">
+                                        sugerida por {item.added_by.user_id === me?.user_id ? "vos" : item.added_by.name}
                                     </span>
                                 </span>
                                 {canControl && (

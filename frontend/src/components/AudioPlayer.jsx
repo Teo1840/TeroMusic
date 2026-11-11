@@ -16,6 +16,7 @@ export default function AudioPlayer({ songId }) {
             ref={audioRef}
             controls
             preload="metadata"
+            className="w-full mt-2"
             src={src}
             onError={onError}
             onLoadedData={onLoadedData}
