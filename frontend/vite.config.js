@@ -15,7 +15,9 @@ export default defineConfig({
                 target: "http://gateway:80",
                 changeOrigin: true,
                 // Manda X-Forwarded-For: el gateway limita pedidos por IP del navegador.
-                xfwd: true
+                xfwd: true,
+                // Deja pasar los WebSockets de las salas en vivo (/api/v1/ws/rooms/...).
+                ws: true
             }
         }
     }

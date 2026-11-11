@@ -237,6 +237,37 @@ services:
     ports:
       - "127.0.0.1:8011:8000"
 
+  # Salas en vivo: WebSockets + estado en Redis. Sin estado propio: se puede
+  # escalar con "docker compose up --scale rooms_service=2" (ver su README).
+  rooms_service:
+    build:
+      context: .
+      dockerfile: services/rooms_service/Dockerfile
+    restart: unless-stopped
+    environment:
+      PORT: 8000
+      JWT_SECRET: ${JWT_SECRET}
+      REDIS_URL: redis://redis:6379
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASS:-guest}@rabbitmq:5672
+      CATALOG_URL: http://catalog_service:8000
+      ROOM_TTL_SEC: 86400
+      ROOM_DEFAULT_MAX_LISTENERS: 50
+    ports:
+      - "127.0.0.1:${ROOMS_PORT:-8006}:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      catalog_service:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   gateway:
     build:
       context: ./gateway
@@ -250,6 +281,7 @@ services:
       - audio_service
       - metrics_service
       - notification_service
+      - rooms_service
 
   frontend:
     build:
@@ -258,7 +290,9 @@ services:
     depends_on:
       - gateway
     ports:
-      - "127.0.0.1:5173:5173"
+      # Por defecto solo esta PC. Para una demo en la red local: FRONTEND_BIND=0.0.0.0 en .env
+      # (es la única puerta abierta: el resto de los servicios sigue en 127.0.0.1).
+      - "${FRONTEND_BIND:-127.0.0.1}:5173:5173"
 
 
 

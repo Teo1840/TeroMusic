@@ -8,6 +8,8 @@ import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Catalog from "./pages/Catalog";
 import Metrics from "./pages/Metrics";
+import Rooms from "./pages/Rooms";
+import Room from "./pages/Room";
 
 import ProtectedRoute from "./components/ProtectedRoute";
 
@@ -48,6 +50,24 @@ export default function App() {
                 element={
                     <ProtectedRoute>
                         <Metrics />
+                    </ProtectedRoute>
+                }
+            />
+
+            <Route
+                path="/rooms"
+                element={
+                    <ProtectedRoute>
+                        <Rooms />
+                    </ProtectedRoute>
+                }
+            />
+
+            <Route
+                path="/rooms/:roomId"
+                element={
+                    <ProtectedRoute>
+                        <Room />
                     </ProtectedRoute>
                 }
             />
