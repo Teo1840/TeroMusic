@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../api/client";
@@ -9,11 +10,13 @@ export default function Login() {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [error, setError] = useState("");
+    const [loading, setLoading] = useState(false);
 
     async function handleSubmit(event) {
 
         event.preventDefault();
         setError("");
+        setLoading(true);
 
         try {
 
@@ -25,9 +28,15 @@ export default function Login() {
                 }
             );
 
+            const token = response.data.access_token;
+
+            if (!token) {
+                throw new Error("El servidor no devolvió un token válido.");
+            }
+
             localStorage.setItem(
                 "access_token",
-                response.data.access_token
+                token
             );
 
             navigate("/catalog");
@@ -36,8 +45,12 @@ export default function Login() {
 
             setError(
                 error.response?.data?.detail ||
-                "Login failed"
+                error.message ||
+                "No se pudo iniciar sesión."
             );
+
+        } finally {
+            setLoading(false);
         }
     }
 
@@ -50,27 +63,23 @@ export default function Login() {
             >
 
                 <h1 className="text-2xl font-bold">
-                    Login
+                    Iniciar sesión
                 </h1>
 
                 <input
                     type="email"
                     placeholder="Email"
                     value={email}
-                    onChange={(e) =>
-                        setEmail(e.target.value)
-                    }
+                    onChange={(e) => setEmail(e.target.value)}
                     className="w-full border p-2"
                     required
                 />
 
                 <input
                     type="password"
-                    placeholder="Password"
+                    placeholder="Contraseña"
                     value={password}
-                    onChange={(e) =>
-                        setPassword(e.target.value)
-                    }
+                    onChange={(e) => setPassword(e.target.value)}
                     className="w-full border p-2"
                     required
                 />
@@ -83,9 +92,10 @@ export default function Login() {
 
                 <button
                     type="submit"
-                    className="w-full border p-2"
+                    disabled={loading}
+                    className="w-full border p-2 disabled:opacity-50"
                 >
-                    Login
+                    {loading ? "Ingresando..." : "Iniciar sesión"}
                 </button>
 
             </form>

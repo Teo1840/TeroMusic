@@ -1,18 +1,31 @@
+
 import { useEffect, useState } from "react";
 import api from "../api/client";
+import AudioPlayer from "../components/AudioPlayer";
 
 export default function Catalog() {
 
     const [songs, setSongs] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState("");
 
     useEffect(() => {
 
         async function loadSongs() {
+            try {
+                const response = await api.get("/catalog/songs");
 
-            const response =
-                await api.get("/catalog/songs");
+                setSongs(response.data);
 
-            setSongs(response.data);
+            } catch (err) {
+                setError(
+                    err.response?.data?.detail ||
+                    "No se pudo cargar el catálogo."
+                );
+
+            } finally {
+                setLoading(false);
+            }
         }
 
         loadSongs();
@@ -23,31 +36,49 @@ export default function Catalog() {
         <div className="p-8">
 
             <h1 className="text-3xl font-bold mb-6">
-                Catalog
+                Catálogo
             </h1>
 
-            <div className="grid grid-cols-3 gap-4">
+            {loading && (
+                <p>Cargando canciones...</p>
+            )}
 
-                {songs.map(song => (
+            {error && (
+                <p className="text-red-500">
+                    {error}
+                </p>
+            )}
 
-                    <div
-                        key={song.id}
-                        className="border rounded p-4"
-                    >
+            {!loading && !error && songs.length === 0 && (
+                <p>No hay canciones disponibles.</p>
+            )}
 
-                        <h2 className="font-semibold">
-                            {song.title}
-                        </h2>
+            {!loading && !error && (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
 
-                        <p>
-                            {song.artist_name}
-                        </p>
+                    {songs.map(song => (
 
-                    </div>
+                        <div
+                            key={song.id}
+                            className="border rounded p-4"
+                        >
 
-                ))}
+                            <h2 className="font-semibold">
+                                {song.title}
+                            </h2>
 
-            </div>
+                            <AudioPlayer songId={song.id} />
+
+                            <p>
+                                {song.artist_id}
+                            </p>
+
+                        </div>
+
+                    ))}
+
+                </div>
+            )}
 
         </div>
     );
