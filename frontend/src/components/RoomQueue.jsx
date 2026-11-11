@@ -1,5 +1,5 @@
-import { useState } from "react";
 import { ArrowDownIcon, ArrowUpIcon, CheckIcon, CloseIcon, PlusIcon } from "./Icons";
+import SongSearch from "./SongSearch";
 
 function formatDuration(seconds) {
     if (!Number.isFinite(seconds) || seconds <= 0) return "";
@@ -27,62 +27,21 @@ function IconButton({ label, onClick, disabled, danger, children }) {
  * Anfitrión/coanfitriones: agregan, reordenan, sacan y aceptan/rechazan sugerencias.
  * Oyentes: ven la cola y sugieren canciones.
  */
-// Minúsculas y sin tildes, para que "cancion" encuentre "Canción".
-function normalize(text) {
-    return (text ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
-}
-
-const MAX_RESULTS = 10;
-
 export default function RoomQueue({ queue, suggestions, songs, canControl, me, send }) {
-    const [search, setSearch] = useState("");
-    const term = normalize(search);
-    const results = term
-        ? songs.filter((song) => normalize(song.title).includes(term)).slice(0, MAX_RESULTS)
-        : [];
-
-    function addSong(songId) {
-        if (!songId) return;
-        send({ type: canControl ? "queue_add" : "suggest", song_id: songId });
-        setSearch("");
+    function addSong(song) {
+        send({ type: canControl ? "queue_add" : "suggest", song_id: song.id });
     }
 
     return (
         <div className="border rounded p-4 mb-6 space-y-4">
 
-            <div className="text-sm">
-                <label className="flex flex-wrap items-center gap-2">
-                    <PlusIcon />
-                    {canControl ? "Agregar a la cola:" : "Sugerir canción:"}
-                    <input
-                        type="search"
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                        placeholder="Buscar por nombre..."
-                        className="border p-1 min-w-0 flex-1 max-w-full"
-                    />
-                </label>
-
-                {term && (
-                    <ul className="mt-2 border rounded divide-y max-h-60 overflow-y-auto">
-                        {results.length === 0 && (
-                            <li className="px-3 py-2 text-gray-500">No hay canciones con ese nombre.</li>
-                        )}
-                        {results.map((song) => (
-                            <li key={song.id}>
-                                <button
-                                    type="button"
-                                    onClick={() => addSong(song.id)}
-                                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-100"
-                                >
-                                    <span className="flex-1 min-w-0 break-words">{song.title}</span>
-                                    <PlusIcon />
-                                </button>
-                            </li>
-                        ))}
-                    </ul>
-                )}
-            </div>
+            <SongSearch
+                songs={songs}
+                icon={<PlusIcon />}
+                label={canControl ? "Agregar a la cola:" : "Sugerir canción:"}
+                actionIcon={<PlusIcon />}
+                onPick={addSong}
+            />
 
             <div>
                 <h3 className="font-semibold mb-2">A continuación ({queue.length})</h3>

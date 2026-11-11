@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import api from "../api/client";
 import { NextIcon, PauseIcon, PlayIcon, PlaybackIcon, VolumeIcon, VolumeOffIcon } from "../components/Icons";
 import RoomQueue from "../components/RoomQueue";
+import SongSearch from "../components/SongSearch";
 import { usePlayTracking, useSignedStreamUrl } from "../lib/audio";
 import { positionAt, useRoom } from "../lib/room";
 
@@ -346,19 +347,13 @@ export default function Room() {
                 </div>
 
                 {canControl && (
-                    <label className="flex flex-wrap items-center gap-2 text-sm">
-                        Poner ahora:
-                        <select
-                            value=""
-                            onChange={(e) => e.target.value && send({ type: "set_song", song_id: e.target.value })}
-                            className="border p-1 min-w-0 flex-1 sm:flex-none max-w-full"
-                        >
-                            <option value="">Elegir...</option>
-                            {songs.map((song) => (
-                                <option key={song.id} value={song.id}>{song.title}</option>
-                            ))}
-                        </select>
-                    </label>
+                    <SongSearch
+                        songs={songs}
+                        icon={<PlayIcon />}
+                        label="Poner ahora:"
+                        actionIcon={<PlayIcon />}
+                        onPick={(song) => send({ type: "set_song", song_id: song.id })}
+                    />
                 )}
 
                 {!canControl && (
