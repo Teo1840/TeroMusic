@@ -9,6 +9,7 @@ const { randomBytes, randomUUID } = require('node:crypto');
 const auth = require('../src/auth');
 const cache = require('../src/cache');
 const config = require('../src/config');
+const signed = require('../src/signed');
 const storage = require('../src/storage');
 
 const AUDIO_URL = process.env.AUDIO_URL || `http://localhost:${config.port}`;
@@ -23,7 +24,8 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function stream(range, { id = songId } = {}) {
   const headers = range ? { Range: range } : {};
-  return fetch(`${AUDIO_URL}/audio/stream/${id}`, { headers });
+  const query = signed.signedUrl(id).url.split('?')[1];
+  return fetch(`${AUDIO_URL}/audio/stream/${id}?${query}`, { headers });
 }
 
 function played(body) {

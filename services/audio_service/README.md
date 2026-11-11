@@ -17,10 +17,23 @@ docker compose logs --tail 100 audio_service
 API en http://localhost:8003 (`AUDIO_PORT` cambia el puerto local). Dentro
 de Docker: `http://audio_service:8000`.
 
+## GET /audio/stream-url/{song_id}
+
+Pide login (`Authorization: Bearer <jwt>`). Devuelve una URL temporal firmada
+para el stream, como las presigned URLs de S3:
+
+```json
+{ "url": "/api/v1/audio/stream/{song_id}?exp=1794410441&sig=J98h...", "expires_at": "2026-11-11T16:00:41Z" }
+```
+
+- Firma HMAC-SHA256 de `song_id` + `exp` con `JWT_SECRET` (o `STREAM_URL_SECRET`).
+- Vence a los `STREAM_URL_TTL_SEC` (3600 s). `PUBLIC_STREAM_PATH` cambia la ruta devuelta.
+- Errores: 401 sin login, 404 si no existe, 409 si no esta PUBLICADO.
+
 ## GET /audio/stream/{song_id}
 
 ```
-GET /audio/stream/c3d4e5f6-1a2b-4c3d-8e9f-0a1b2c3d4e5f?bitrate=128
+GET /audio/stream/c3d4e5f6-1a2b-4c3d-8e9f-0a1b2c3d4e5f?exp=1794410441&sig=J98h...&bitrate=128
 Range: bytes=0-1048575
 ```
 
@@ -33,8 +46,9 @@ Accept-Ranges: bytes
 X-Cache: MISS            (HIT si salio de Redis, PARTIAL si fue mixto)
 ```
 
-- No pide usuario: `<audio src>` no puede mandar `Authorization`. Pedir audio
-  no cuenta como reproduccion (ver `POST /audio/played`).
+- No pide header `Authorization` (`<audio src>` no puede mandarlo): exige la
+  URL firmada de `/audio/stream-url`. 401 si falta la firma, 403 si es invalida,
+  de otra cancion o vencio. Pedir audio no cuenta como reproduccion (ver `POST /audio/played`).
 - Antes de servir consulta `GET {CATALOG_URL}/songs/{song_id}`:
   404 si no existe, 409 si el estado no es `PUBLICADO` (BORRADOR o FALLIDO).
   La respuesta PUBLICADO se cachea en Redis `CATALOG_CACHE_TTL_SEC` (60 s).

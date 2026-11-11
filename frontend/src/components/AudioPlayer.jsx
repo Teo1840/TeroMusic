@@ -1,4 +1,5 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import api from "../api/client";
 
 // Saltos de tiempo mayores a esto son seeks, no reproducción: no se cuentan.
 const MAX_TICK_SEC = 1.5;
@@ -27,6 +28,35 @@ function reportPlayed(body) {
 export default function AudioPlayer({ songId }) {
 
     const audioRef = useRef(null);
+
+    // URL temporal firmada (vence): <audio> no puede mandar el token en un header.
+    const [src, setSrc] = useState(null);
+    const retried = useRef(false);
+
+    const loadUrl = async () => {
+        const { data } = await api.get(`/audio/stream-url/${songId}`);
+        setSrc(data.url);
+    };
+
+    useEffect(() => {
+        retried.current = false;
+        setSrc(null);
+        loadUrl().catch(() => {});
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [songId]);
+
+    // Si la URL venció mientras la página estaba abierta, se pide una nueva (una vez).
+    const handleError = () => {
+        if (retried.current) return;
+        retried.current = true;
+        const audio = audioRef.current;
+        const position = audio?.currentTime || 0;
+        loadUrl()
+            .then(() => {
+                if (audioRef.current) audioRef.current.currentTime = position;
+            })
+            .catch(() => {});
+    };
 
     // Reproducción en curso: { startedAt, listened, lastTime } o null.
     const session = useRef(null);
@@ -83,12 +113,18 @@ export default function AudioPlayer({ songId }) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [songId]);
 
+    if (!src) {
+        return <p className="text-sm text-gray-500">Cargando audio...</p>;
+    }
+
     return (
         <audio
             ref={audioRef}
             controls
             preload="metadata"
-            src={`/api/v1/audio/stream/${songId}`}
+            src={src}
+            onError={handleError}
+            onLoadedData={() => { retried.current = false; }}
             onPlay={handlePlay}
             onTimeUpdate={handleTimeUpdate}
             onSeeked={handleSeeked}
