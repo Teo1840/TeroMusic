@@ -4,7 +4,7 @@ import os
 from contextlib import AsyncExitStack, asynccontextmanager
 
 import aio_pika
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, Header, HTTPException, Query
 from pydantic import ValidationError
 from jsonschema.exceptions import ValidationError as SchemaValidationError
 
@@ -105,7 +105,9 @@ class Notification(BaseModel):
 
 
 @app.get("/notifications/user/{user_id}", response_model=list[Notification])
-async def user_notifications(user_id: UUID, limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge=0)):
+async def user_notifications(user_id: UUID, limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge=0), x_user_id: UUID | None = Header(default=None)):
+    if x_user_id is not None and x_user_id != user_id:
+        raise HTTPException(status_code=403, detail="Cannot read another user's notifications")
     try:
         rows = await app.state.pool.fetch(
             """SELECT * FROM notifications.history WHERE user_id=$1
