@@ -5,12 +5,14 @@
 async function snapshot(store, roomId, now = Date.now()) {
   const room = await store.getRoom(roomId);
   if (!room) return null;
-  const [cohosts, playback, listeners] = await Promise.all([
+  const [cohosts, playback, queue, suggestions, listeners] = await Promise.all([
     store.getCohosts(roomId),
     store.getPlayback(roomId),
+    store.getQueue(roomId),
+    store.getSuggestions(roomId),
     store.listeners(roomId),
   ]);
-  return { room: { ...room, cohosts }, playback, listeners, server_time: now };
+  return { room: { ...room, cohosts }, playback, queue, suggestions, listeners, server_time: now };
 }
 
 module.exports = { snapshot };

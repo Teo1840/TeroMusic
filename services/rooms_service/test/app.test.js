@@ -31,6 +31,8 @@ function memoryStore() {
     getRoom: async (id) => rooms.get(id) ?? null,
     getPlayback: async (id) => playbacks.get(id) ?? pb.initial(),
     getCohosts: async () => [],
+    getQueue: async () => [],
+    getSuggestions: async () => [],
     listeners: async () => [{ user_id: HOST, name: 'ana' }],
     listPublic: async () => [...rooms.values()].filter((r) => r.visibility === 'public'),
     publish: async (roomId, payload) => published.push({ roomId, payload }),

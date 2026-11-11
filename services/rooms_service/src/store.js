@@ -12,6 +12,9 @@ const playback = require('./playback');
  *   room:{id}            JSON con nombre, visibilidad, host, etc.
  *   room:{id}:cohosts    SET de user_id coanfitriones
  *   room:{id}:playback   JSON con el estado de reproduccion (ver playback.js)
+ *   room:{id}:queue      JSON: cola "a continuacion" (ver queue.js)
+ *   room:{id}:suggestions JSON: canciones sugeridas por oyentes
+ *   room:{id}:lock       candado para que dos comandos no se pisen (aunque vengan de otra copia)
  *   room:{id}:conns      HASH conexion → { user_id, name, instance }
  *   rooms:public         ZSET de salas publicas (por fecha de creacion)
  *   rooms:instance:{id}  marca de vida de cada copia del servicio (TTL)
@@ -27,9 +30,14 @@ const key = {
   cohosts: (id) => `room:${id}:cohosts`,
   playback: (id) => `room:${id}:playback`,
   conns: (id) => `room:${id}:conns`,
+  queue: (id) => `room:${id}:queue`,
+  suggestions: (id) => `room:${id}:suggestions`,
+  lock: (id) => `room:${id}:lock`,
   instance: (id) => `rooms:instance:${id}`,
 };
-const roomKeys = (id) => [key.room(id), key.cohosts(id), key.playback(id), key.conns(id)];
+const roomKeys = (id) => [
+  key.room(id), key.cohosts(id), key.playback(id), key.conns(id), key.queue(id), key.suggestions(id),
+];
 
 // Identifica a esta copia del servicio: sus conexiones mueren con ella.
 const instanceId = randomUUID();
@@ -84,6 +92,41 @@ const getCohosts = (id) => redis.smembers(key.cohosts(id));
 
 async function setPlayback(id, value) {
   await redis.set(key.playback(id), JSON.stringify(value), 'EX', config.roomTtlSec);
+}
+
+const getQueue = async (id) => parse(await redis.get(key.queue(id))) ?? [];
+const getSuggestions = async (id) => parse(await redis.get(key.suggestions(id))) ?? [];
+
+/** Guarda de una vez lo que haya cambiado: { playback?, queue?, suggestions? }. */
+async function saveChanges(id, { playback: pb, queue, suggestions }) {
+  const multi = redis.multi();
+  if (pb) multi.set(key.playback(id), JSON.stringify(pb), 'EX', config.roomTtlSec);
+  if (queue) multi.set(key.queue(id), JSON.stringify(queue), 'EX', config.roomTtlSec);
+  if (suggestions) multi.set(key.suggestions(id), JSON.stringify(suggestions), 'EX', config.roomTtlSec);
+  await multi.exec();
+}
+
+const RELEASE_LOCK = "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end";
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Ejecuta fn con la sala bloqueada: leer estado → aplicar comando → guardar, sin que otro
+ * comando (de esta u otra copia del servicio) se meta en el medio. Ej.: si dos navegadores
+ * avisan "termino la cancion" a la vez, solo el primero pasa a la siguiente.
+ * El candado vence solo (ttlMs) por si la copia que lo tenia se cae.
+ */
+async function withLock(id, fn, { ttlMs = 5000, waitMs = 3000 } = {}) {
+  const token = randomUUID();
+  const deadline = Date.now() + waitMs;
+  while (!(await redis.set(key.lock(id), token, 'PX', ttlMs, 'NX'))) {
+    if (Date.now() > deadline) throw new Error(`Sala ${id} ocupada`);
+    await sleep(15);
+  }
+  try {
+    return await fn();
+  } finally {
+    await redis.eval(RELEASE_LOCK, 1, key.lock(id), token).catch(() => {});
+  }
 }
 
 const addCohost = (id, userId) => redis.sadd(key.cohosts(id), userId).then(() => touch(id));
@@ -150,6 +193,7 @@ const isReady = () => redis.status === 'ready';
 
 module.exports = {
   instanceId, connect, close, isReady,
-  createRoom, deleteRoom, getRoom, getPlayback, setPlayback, getCohosts, addCohost, removeCohost,
+  createRoom, deleteRoom, getRoom, getPlayback, setPlayback, getQueue, getSuggestions, saveChanges, withLock,
+  getCohosts, addCohost, removeCohost,
   addConn, removeConn, listeners, listPublic, touch, publish, subscribe,
 };

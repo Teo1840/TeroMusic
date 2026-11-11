@@ -14,7 +14,8 @@ const { snapshot } = require('./snapshot');
  *   1. El cliente manda {type:"auth", token:"<jwt>"} (el navegador no puede mandar
  *      headers en un WebSocket, y asi el token no queda en la URL ni en los logs).
  *   2. El servidor responde {type:"welcome"} y despues {type:"state"} a toda la sala.
- *   3. Comandos: play, pause, seek, set_song, promote, demote, ping.
+ *   3. Comandos: play, pause, seek, set_song, next, queue_add, queue_remove, queue_move,
+ *      suggest, suggestion_accept, suggestion_reject, ended, promote, demote, ping.
  *
  * Cada cambio se guarda en Redis y se publica en el canal rooms:events. Todas las
  * copias del servicio lo reciben y lo reenvian a sus propias conexiones de esa sala.
@@ -135,23 +136,40 @@ class Hub {
       return;
     }
 
-    const room = await this.store.getRoom(roomId);
-    if (!room) {
-      ws.close(CLOSE.NOT_FOUND, 'La sala ya no existe');
-      return;
-    }
-    const [cohosts, current] = await Promise.all([this.store.getCohosts(roomId), this.store.getPlayback(roomId)]);
-
-    let change;
+    // Leer → aplicar → guardar con la sala bloqueada: dos comandos a la vez no se pisan.
+    let changed;
     try {
-      change = await commands.apply(message, {
-        room,
-        cohosts,
-        playback: current,
-        userId: ws.user.id,
-        now: this.now(),
-        getSong: this.getSong,
-        startDelayMs: config.startDelayMs,
+      changed = await this.store.withLock(roomId, async () => {
+        const room = await this.store.getRoom(roomId);
+        if (!room) {
+          ws.close(CLOSE.NOT_FOUND, 'La sala ya no existe');
+          return false;
+        }
+        const [cohosts, current, queue, suggestions] = await Promise.all([
+          this.store.getCohosts(roomId),
+          this.store.getPlayback(roomId),
+          this.store.getQueue(roomId),
+          this.store.getSuggestions(roomId),
+        ]);
+
+        const change = await commands.apply(message, {
+          room,
+          cohosts,
+          user: ws.user,
+          playback: current,
+          queue,
+          suggestions,
+          now: this.now(),
+          getSong: this.getSong,
+          startDelayMs: config.startDelayMs,
+        });
+        if (Object.keys(change).length === 0) return false;
+
+        await this.store.saveChanges(roomId, change);
+        if (change.promote) await this.store.addCohost(roomId, change.promote);
+        if (change.demote) await this.store.removeCohost(roomId, change.demote);
+        await this.store.touch(roomId);
+        return true;
       });
     } catch (error) {
       if (!(error instanceof commands.CommandError)) throw error;
@@ -159,11 +177,7 @@ class Hub {
       return;
     }
 
-    if (change.playback) await this.store.setPlayback(roomId, change.playback);
-    if (change.promote) await this.store.addCohost(roomId, change.promote);
-    if (change.demote) await this.store.removeCohost(roomId, change.demote);
-    await this.store.touch(roomId);
-    await this.broadcastState(roomId);
+    if (changed) await this.broadcastState(roomId);
   }
 
   async authenticate(ws, roomId, message, authTimer) {
