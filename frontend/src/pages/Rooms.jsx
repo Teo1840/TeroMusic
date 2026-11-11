@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../api/client";
+import { PlaybackIcon } from "../components/Icons";
 
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 
@@ -166,7 +167,7 @@ export default function Rooms() {
                         </p>
                         <p className="text-sm">
                             {room.now_playing
-                                ? `${room.playing ? "▶" : "⏸"} ${room.now_playing}`
+                                ? <><PlaybackIcon playing={room.playing} size={14} /> {room.now_playing}</>
                                 : "Sin música todavía"}
                         </p>
                     </button>
