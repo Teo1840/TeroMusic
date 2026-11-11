@@ -34,6 +34,13 @@ Puerto configurable: `NOTIFICATION_PORT=8005`. Documentacion: http://localhost:8
 
 ## API para el frontend
 
+A traves del gateway: `GET http://localhost:8080/api/v1/notifications/user/{user_id}?limit=50&offset=0`,
+con `Authorization: Bearer <token>`. El gateway verifica el token y reemplaza
+`X-User-Id` con la identidad autenticada; el servicio devuelve 403 si no coincide
+con el usuario solicitado. OPTIONS permite el preflight del frontend.
+El acceso directo por localhost:8005 se conserva para desarrollo interno.
+
+
 `GET /notifications/user/{user_id}?limit=50&offset=0`
 
 Devuelve un array JSON de objetos con `id`, `event_id`, `user_id`, `type`,

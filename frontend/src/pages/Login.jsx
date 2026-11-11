@@ -1,6 +1,6 @@
 
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import api from "../api/client";
 
 export default function Login() {
@@ -97,6 +97,13 @@ export default function Login() {
                 >
                     {loading ? "Ingresando..." : "Iniciar sesión"}
                 </button>
+
+                <p>
+                    ¿No tenés una cuenta?{" "}
+                    <Link to="/register" className="text-blue-600 underline">
+                        Registrarse
+                    </Link>
+                </p>
 
             </form>
 

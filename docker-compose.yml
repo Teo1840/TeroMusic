@@ -102,7 +102,7 @@ services:
       MINIO_ACCESS_KEY: ${MINIO_USER}
       MINIO_SECRET_KEY: ${MINIO_PASS}
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -247,6 +247,7 @@ services:
       - catalog_service
       - audio_service
       - metrics_service
+      - notification_service
 
   frontend:
     build:
@@ -255,9 +256,9 @@ services:
     depends_on:
       - gateway
     ports:
-      - "5173:5173"
+      - "127.0.0.1:5173:5173"
 
-  
+
 
 volumes:
   postgres_data:
