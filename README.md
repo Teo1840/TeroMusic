@@ -58,5 +58,9 @@ Notificaciones: `notification_service` en http://localhost:8005/docs.
 Historial: `GET /notifications/user/{user_id}`. Ver `services/notification_service/README.md`.
 
 Streaming: audio_service (Node.js) en http://localhost:8003. Sirve
-`GET /audio/stream/{song_id}` con cache Redis por fragmentos y publica
-`song.played.v1` al iniciar. Ver `services/audio_service/README.md`.
+`GET /audio/stream/{song_id}` (URL firmada que vence) con cache Redis por fragmentos
+y publica `song.played.v1` con `POST /audio/played`. Ver `services/audio_service/README.md`.
+
+Salas en vivo: rooms_service (Node.js + WebSockets) en http://localhost:8006.
+Reproduccion sincronizada con anfitrion y coanfitriones, estado en Redis y
+`room.created.v1`. Ver `services/rooms_service/README.md`.

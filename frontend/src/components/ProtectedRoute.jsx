@@ -1,4 +1,5 @@
 import { Navigate } from "react-router-dom";
+import NavBar from "./NavBar";
 
 
 function isTokenExpired(token) {
@@ -35,5 +36,10 @@ export default function ProtectedRoute({ children }) {
         );
     }
 
-    return children;
+    return (
+        <>
+            <NavBar />
+            {children}
+        </>
+    );
 }
