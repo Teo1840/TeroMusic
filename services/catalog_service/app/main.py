@@ -8,7 +8,8 @@ from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadF
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from . import consumer, minio_client, publisher
+from . import consumer, minio_client, playlists, publisher
+from .auth import current_user_id
 from .config import settings
 from .database import Base, engine, get_session
 from .models import Song, SongStatus
@@ -34,22 +35,11 @@ async def lifespan(app: FastAPI):
 logging.basicConfig(level=logging.INFO)
 
 app = FastAPI(title="catalog_service", lifespan=lifespan)
+app.include_router(playlists.router)
 
 
 # Formatos aceptados: extensión -> content_type (los dos están en el enum del contrato)
 ALLOWED_FORMATS = {".wav": "audio/wav", ".mp3": "audio/mpeg"}
-
-
-def current_user_id(x_user_id: str | None = Header(default=None)) -> uuid.UUID:
-    """Id del usuario autenticado. Lo inyecta el gateway (nginx) en X-User-Id
-    después de validar el JWT con user_service. Este servicio no decodifica
-    el token: confía en el gateway, por eso no debe exponerse sin él."""
-    if not x_user_id:
-        raise HTTPException(401, "Falta autenticación (cabecera X-User-Id)")
-    try:
-        return uuid.UUID(x_user_id)
-    except ValueError:
-        raise HTTPException(401, "X-User-Id inválido")
 
 
 def _sha256(fileobj) -> str:

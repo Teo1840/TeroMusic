@@ -18,7 +18,23 @@ API en http://localhost:8000/docs. Desde el front, todo pasa por el gateway: `/a
 | `POST` | `/songs/upload` | Sube una canción (`title` + `file`, formulario multipart). Responde `202` con `song_id` |
 | `GET` | `/songs` | Lista las canciones **publicadas** |
 | `GET` | `/songs/{song_id}` | Estado de una canción (sirve para saber si el worker ya terminó) |
+| `GET` | `/playlists` | Playlists del usuario: `[{id, name, song_count}]` |
+| `POST` | `/playlists` | Crea una (`{name}`, hasta 100 caracteres). `201` |
+| `GET` | `/playlists/{id}` | La playlist con sus canciones en orden (`id, title, duration, status`) |
+| `PATCH` | `/playlists/{id}` | Cambia el nombre (`{name}`) |
+| `DELETE` | `/playlists/{id}` | Borra la playlist. `204` |
+| `POST` | `/playlists/{id}/songs` | Agrega una canción publicada al final (`{song_id}`). `409` si ya está |
+| `DELETE` | `/playlists/{id}/songs/{song_id}` | Saca una canción. `204` |
+| `PUT` | `/playlists/{id}/songs` | Reordena: `{song_ids}` con exactamente las mismas canciones. `400` si no |
 | `GET` | `/health` | Chequeo de vida |
+
+## Playlists
+
+- Son de quien las crea (`X-User-Id`). Las de otro usuario responden `403`; las que no
+  existen, `404`.
+- Tablas `playlists` y `playlist_songs` (`playlist_id`, `song_id`, `position`). La clave
+  `(playlist_id, song_id)` impide repetir una canción en la misma playlist. Se crean solas
+  al arrancar, como `songs`.
 
 ## Subir una canción
 
@@ -50,7 +66,7 @@ despublica una canción que ya estaba lista.
 
 ## Tests
 
-22 tests con pytest. No necesitan Postgres, MinIO ni RabbitMQ: la base es SQLite en
+37 tests con pytest. No necesitan Postgres, MinIO ni RabbitMQ: la base es SQLite en
 memoria y MinIO y RabbitMQ están simulados ([tests/conftest.py](tests/conftest.py)).
 
 - `tests/test_upload.py`: subida (202, BORRADOR, evento `audio.uploaded.v1` con sus datos,
@@ -59,6 +75,9 @@ memoria y MinIO y RabbitMQ están simulados ([tests/conftest.py](tests/conftest.
 - `tests/test_consumer.py`: `audio.ready` publica y `audio.failed` marca FALLIDO, un fallo
   tardío no despublica, el mismo evento dos veces se aplica una sola vez, los mensajes
   inválidos van a dead-letter y, si la base falla, el mensaje vuelve a la cola.
+- `tests/test_playlists.py`: crear, listar solo las propias, renombrar, borrar, agregar
+  (`409` repetida, `404` inexistente o sin publicar), sacar, reordenar (`400` si las
+  canciones no coinciden) y `403` en todo lo de otro usuario.
 
 Desde la raíz del repo, dentro del contenedor (PowerShell):
 
