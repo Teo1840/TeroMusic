@@ -14,6 +14,7 @@ redis.on('error', (error) => console.warn(`[cache] Redis: ${error.message}`));
 const chunkKey = (objectKey, num) => `audio:${objectKey}:chunk:${num}`;
 const metaKey = (objectKey) => `audio:${objectKey}:meta`;
 const songKey = (songId) => `catalog:song:${songId}`;
+const waveformKey = (objectKey) => `audio:${objectKey}:waveform`;
 
 async function connect() {
   try {
@@ -55,6 +56,8 @@ const getMeta = (objectKey) => getJson(metaKey(objectKey));
 const setMeta = (objectKey, meta) => setJson(metaKey(objectKey), meta, config.cacheTtlSec);
 const getSong = (songId) => getJson(songKey(songId));
 const setSong = (songId, song) => setJson(songKey(songId), song, config.catalogCacheTtlSec);
+const getWaveform = (objectKey) => getJson(waveformKey(objectKey));
+const setWaveform = (objectKey, waveform) => setJson(waveformKey(objectKey), waveform, config.cacheTtlSec);
 
 function isReady() {
   return redis.status === 'ready';
@@ -65,5 +68,6 @@ async function close() {
 }
 
 module.exports = {
-  redis, chunkKey, metaKey, songKey, connect, getChunk, setChunk, getMeta, setMeta, getSong, setSong, isReady, close,
+  redis, chunkKey, metaKey, songKey, waveformKey, connect, getChunk, setChunk, getMeta, setMeta, getSong, setSong,
+  getWaveform, setWaveform, isReady, close,
 };
