@@ -36,6 +36,22 @@ logging.basicConfig(level=logging.INFO)
 app = FastAPI(title="catalog_service", lifespan=lifespan)
 
 
+# Formatos aceptados: extensión -> content_type (los dos están en el enum del contrato)
+ALLOWED_FORMATS = {".wav": "audio/wav", ".mp3": "audio/mpeg"}
+
+
+def current_user_id(x_user_id: str | None = Header(default=None)) -> uuid.UUID:
+    """Id del usuario autenticado. Lo inyecta el gateway (nginx) en X-User-Id
+    después de validar el JWT con user_service. Este servicio no decodifica
+    el token: confía en el gateway, por eso no debe exponerse sin él."""
+    if not x_user_id:
+        raise HTTPException(401, "Falta autenticación (cabecera X-User-Id)")
+    try:
+        return uuid.UUID(x_user_id)
+    except ValueError:
+        raise HTTPException(401, "X-User-Id inválido")
+
+
 def _sha256(fileobj) -> str:
     h = hashlib.sha256()
     for chunk in iter(lambda: fileobj.read(1024 * 1024), b""):
@@ -52,14 +68,17 @@ def health():
 @app.post("/songs/upload", status_code=202)
 async def upload_song(
     title: str = Form(...),
-    artist_id: uuid.UUID = Form(...),  # más adelante saldrá del JWT
+    artist_id: uuid.UUID = Depends(current_user_id),  # sale del JWT vía gateway
     file: UploadFile = File(...),
     x_correlation_id: str | None = Header(default=None),
     session: AsyncSession = Depends(get_session),
 ):
     # 1. Validar formato
-    if not (file.filename or "").lower().endswith(".wav"):
-        raise HTTPException(400, "Solo se aceptan archivos .wav")
+    filename = (file.filename or "").lower()
+    ext = next((e for e in ALLOWED_FORMATS if filename.endswith(e)), None)
+    if ext is None:
+        raise HTTPException(400, "Solo se aceptan archivos .wav o .mp3")
+    content_type = ALLOWED_FORMATS[ext]
 
     # 2. Tamaño y checksum sin cargar todo en RAM
     file.file.seek(0, 2)
@@ -71,10 +90,10 @@ async def upload_song(
         raise HTTPException(413, f"Máximo {settings.max_upload_mb} MB")
     checksum = await asyncio.to_thread(_sha256, file.file)
 
-    # 3. Subir el original a audio/raw/{song_id}.wav
+    # 3. Subir el original a audio/raw/{song_id}.{wav|mp3}
     song_id = uuid.uuid4()
-    original_key = f"{settings.raw_prefix}{song_id}.wav"
-    await minio_client.upload_fileobj(original_key, file.file, size, "audio/wav")
+    original_key = f"{settings.raw_prefix}{song_id}{ext}"
+    await minio_client.upload_fileobj(original_key, file.file, size, content_type)
 
     # 4. Guardar en BD como BORRADOR
     song = Song(
@@ -97,7 +116,7 @@ async def upload_song(
                 "original_key": original_key,
                 "bucket": settings.minio_bucket,
                 "uploaded_by": str(artist_id),
-                "content_type": "audio/wav",
+                "content_type": content_type,
                 "size_bytes": size,
                 "checksum_sha256": checksum,
             },
