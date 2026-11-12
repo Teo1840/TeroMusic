@@ -7,6 +7,10 @@ import {
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Catalog from "./pages/Catalog";
+import Upload from "./pages/Upload";
+import MySongs from "./pages/MySongs";
+import Playlists from "./pages/Playlists";
+import Playlist from "./pages/Playlist";
 import Metrics from "./pages/Metrics";
 import Rooms from "./pages/Rooms";
 import Room from "./pages/Room";
@@ -41,6 +45,42 @@ export default function App() {
                 element={
                     <ProtectedRoute>
                         <Catalog />
+                    </ProtectedRoute>
+                }
+            />
+
+            <Route
+                path="/upload"
+                element={
+                    <ProtectedRoute>
+                        <Upload />
+                    </ProtectedRoute>
+                }
+            />
+
+            <Route
+                path="/my-songs"
+                element={
+                    <ProtectedRoute>
+                        <MySongs />
+                    </ProtectedRoute>
+                }
+            />
+
+            <Route
+                path="/playlists"
+                element={
+                    <ProtectedRoute>
+                        <Playlists />
+                    </ProtectedRoute>
+                }
+            />
+
+            <Route
+                path="/playlists/:playlistId"
+                element={
+                    <ProtectedRoute>
+                        <Playlist />
                     </ProtectedRoute>
                 }
             />

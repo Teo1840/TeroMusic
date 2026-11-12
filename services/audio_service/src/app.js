@@ -127,6 +127,45 @@ app.get('/audio/stream/:songId', async (req, res, next) => {
 });
 
 /**
+ * Forma de onda para la barra del reproductor: { version, points, peaks: [0..1] }.
+ * La genera worker_ingesta (processed/{id}/waveform.json). Pide JWT como stream-url.
+ */
+app.get('/audio/waveform/:songId', async (req, res, next) => {
+  const { songId } = req.params;
+  if (!UUID.test(songId)) return res.status(400).json({ detail: 'song_id debe ser un UUID' });
+  try {
+    auth.userIdFrom(req);
+  } catch (error) {
+    if (!(error instanceof auth.Unauthorized)) return next(error);
+    return res.status(401).json({ detail: error.message });
+  }
+  try {
+    const song = await publishedSong(songId, res);
+    if (!song) return undefined;
+
+    const key = catalog.waveformKeyFor(song, songId);
+    let waveform = await cache.getWaveform(key);
+    const hit = Boolean(waveform);
+    if (!waveform) {
+      const raw = await storage.readSmall(key);
+      if (!raw) return res.status(404).json({ detail: 'La cancion no tiene forma de onda' });
+      try {
+        waveform = JSON.parse(raw.toString('utf8'));
+      } catch {
+        waveform = null;
+      }
+      if (!waveform || !Array.isArray(waveform.peaks)) {
+        return res.status(404).json({ detail: 'La forma de onda guardada no es valida' });
+      }
+      cache.setWaveform(key, waveform);
+    }
+    return res.set({ 'Cache-Control': 'private, max-age=3600', 'X-Cache': hit ? 'HIT' : 'MISS' }).json(waveform);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+/**
  * El front lo llama cuando la reproduccion termina o se abandona.
  * Body: { song_id, started_at, listened_sec, completed?, bitrate_kbps?, client?, room_id? }
  * user_id sale del JWT. Responde 202 cuando RabbitMQ confirmo el evento.

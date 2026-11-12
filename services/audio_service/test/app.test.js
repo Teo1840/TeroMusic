@@ -175,3 +175,44 @@ test('catalogo caido: 503', async () => {
     catalog.getSong = fakeGetSong;
   }
 });
+
+test('waveform: con login devuelve los picos de la carpeta de la cancion', async () => {
+  const WAVE = { version: 1, points: 3, peaks: [0.1, 0.5, 1] };
+  const saved = [];
+  const original = { readSmall: storage.readSmall, getWaveform: cache.getWaveform, setWaveform: cache.setWaveform };
+  storage.readSmall = async (key) => (key === `processed/${SONG}/waveform.json` ? Buffer.from(JSON.stringify(WAVE)) : null);
+  cache.getWaveform = async () => null;
+  cache.setWaveform = (key, value) => saved.push([key, value]);
+  try {
+    const headers = { Authorization: `Bearer ${auth.sign({ sub: USER })}` };
+    const response = await fetch(`${base}/audio/waveform/${SONG}`, { headers });
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('x-cache'), 'MISS');
+    assert.deepEqual(await response.json(), WAVE);
+    assert.deepEqual(saved, [[`processed/${SONG}/waveform.json`, WAVE]]);
+
+    cache.getWaveform = async () => WAVE;
+    const again = await fetch(`${base}/audio/waveform/${SONG}`, { headers });
+    assert.equal(again.headers.get('x-cache'), 'HIT');
+  } finally {
+    Object.assign(storage, { readSmall: original.readSmall });
+    Object.assign(cache, { getWaveform: original.getWaveform, setWaveform: original.setWaveform });
+  }
+});
+
+test('waveform: 401 sin login, 404 si no existe el archivo o la cancion, 409 si no esta publicada', async () => {
+  const original = { readSmall: storage.readSmall, getWaveform: cache.getWaveform };
+  storage.readSmall = async () => null;
+  cache.getWaveform = async () => null;
+  try {
+    const headers = { Authorization: `Bearer ${auth.sign({ sub: USER })}` };
+    assert.equal((await fetch(`${base}/audio/waveform/${SONG}`)).status, 401);
+    assert.equal((await fetch(`${base}/audio/waveform/${SONG}`, { headers })).status, 404);
+    assert.equal((await fetch(`${base}/audio/waveform/${MISSING}`, { headers })).status, 404);
+    assert.equal((await fetch(`${base}/audio/waveform/${DRAFT}`, { headers })).status, 409);
+    assert.equal((await fetch(`${base}/audio/waveform/no-es-uuid`, { headers })).status, 400);
+  } finally {
+    storage.readSmall = original.readSmall;
+    cache.getWaveform = original.getWaveform;
+  }
+});

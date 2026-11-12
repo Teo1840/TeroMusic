@@ -257,13 +257,16 @@ y por eso sobrevive a un reinicio ([src/store.js](src/store.js)).
 - **Vencimiento.** Una sala sin actividad se borra sola a las 24 h (`ROOM_TTL_SEC`).
 - **Un usuario con dos pestañas** cuenta como un solo oyente.
 
-Para correr varias copias, quitá `ports:` de `rooms_service` en docker-compose (dos copias no
-pueden usar el mismo puerto local) y corré:
+Para correr dos copias (de este servicio y de audio_service):
 
 ```
-docker compose up -d --scale rooms_service=2
-docker compose restart gateway   # nginx vuelve a resolver las copias
+docker compose -f docker-compose.yml -f docker-compose.scale.yml up -d --build
 ```
+
+Con dos copias no se publica el puerto local 8006, porque dos copias no pueden compartirlo.
+nginx vuelve a consultar el DNS de Docker cada 10 s (`resolve` en el `upstream`), así que
+no hace falta reiniciar el gateway. El header `X-Upstream` de `/api/v1/rooms` muestra qué
+copia atendió cada pedido.
 
 ---
 

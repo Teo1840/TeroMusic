@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../api/client";
 import { PlaybackIcon } from "../components/Icons";
+import { errorMessage } from "../lib/format";
 
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 
@@ -26,7 +27,7 @@ export default function Rooms() {
             setRooms(data);
             setError("");
         } catch (err) {
-            setError(err.response?.data?.detail || "No se pudieron cargar las salas.");
+            setError(errorMessage(err, "No se pudieron cargar las salas."));
         } finally {
             setLoading(false);
         }
@@ -49,7 +50,7 @@ export default function Rooms() {
             });
             navigate(`/rooms/${data.id}`);
         } catch (err) {
-            setError(err.response?.data?.detail || "No se pudo crear la sala.");
+            setError(errorMessage(err, "No se pudo crear la sala."));
             setCreating(false);
         }
     }
@@ -62,17 +63,17 @@ export default function Rooms() {
     }
 
     return (
-        <div className="p-4 sm:p-8 max-w-4xl">
+        <div className="page max-w-4xl">
 
-            <h1 className="text-2xl sm:text-3xl font-bold mb-2">Salas en vivo</h1>
-            <p className="text-gray-600 mb-6">
+            <h1 className="page-title mb-2">Salas en vivo</h1>
+            <p className="muted mb-6">
                 Escuchen la misma canción, al mismo tiempo, desde distintos dispositivos.
             </p>
 
             <div className="grid md:grid-cols-2 gap-4 mb-8">
 
-                <form onSubmit={createRoom} className="border rounded p-4 space-y-3">
-                    <h2 className="text-xl font-semibold">Crear sala</h2>
+                <form onSubmit={createRoom} className="card space-y-3">
+                    <h2 className="section-title">Crear sala</h2>
 
                     <input
                         type="text"
@@ -81,13 +82,14 @@ export default function Rooms() {
                         onChange={(e) => setName(e.target.value)}
                         maxLength={80}
                         required
-                        className="w-full border p-2"
+                        className="field"
                     />
 
                     <div className="flex flex-wrap gap-x-4 gap-y-2">
                         <label className="flex items-center gap-1">
                             <input
                                 type="radio"
+                                className="accent-black"
                                 checked={visibility === "public"}
                                 onChange={() => setVisibility("public")}
                             />
@@ -96,6 +98,7 @@ export default function Rooms() {
                         <label className="flex items-center gap-1">
                             <input
                                 type="radio"
+                                className="accent-black"
                                 checked={visibility === "private"}
                                 onChange={() => setVisibility("private")}
                             />
@@ -111,22 +114,22 @@ export default function Rooms() {
                             max={500}
                             value={maxListeners}
                             onChange={(e) => setMaxListeners(e.target.value)}
-                            className="w-24 border p-1 ml-2"
+                            className="field w-24 p-1 ml-2"
                         />
                     </label>
 
                     <button
                         type="submit"
                         disabled={creating}
-                        className="bg-black text-white px-4 py-2 rounded disabled:opacity-50"
+                        className="btn-primary"
                     >
                         {creating ? "Creando..." : "Crear y entrar"}
                     </button>
                 </form>
 
-                <form onSubmit={joinByLink} className="border rounded p-4 space-y-3">
-                    <h2 className="text-xl font-semibold">Entrar con link</h2>
-                    <p className="text-sm text-gray-600">
+                <form onSubmit={joinByLink} className="card space-y-3">
+                    <h2 className="section-title">Entrar con link</h2>
+                    <p className="text-sm muted">
                         Para salas privadas: pegá el link que te pasó el anfitrión.
                     </p>
                     <input
@@ -134,23 +137,23 @@ export default function Rooms() {
                         placeholder="http://localhost:5173/rooms/..."
                         value={link}
                         onChange={(e) => setLink(e.target.value)}
-                        className="w-full border p-2"
+                        className="field"
                     />
-                    <button type="submit" className="border px-4 py-2 rounded">
+                    <button type="submit" className="btn">
                         Entrar
                     </button>
                 </form>
 
             </div>
 
-            {error && <p className="text-red-500 mb-4">{error}</p>}
+            {error && <p className="notice mb-4" role="alert">{error}</p>}
 
-            <h2 className="text-xl font-semibold mb-3">Salas públicas</h2>
+            <h2 className="section-title mb-3">Salas públicas</h2>
 
-            {loading && <p>Cargando salas...</p>}
+            {loading && <p className="muted">Cargando salas...</p>}
 
             {!loading && rooms.length === 0 && (
-                <p className="text-gray-600">No hay salas abiertas. ¡Creá la primera!</p>
+                <p className="muted">No hay salas abiertas. ¡Creá la primera!</p>
             )}
 
             <div className="grid md:grid-cols-2 gap-4">
@@ -158,10 +161,10 @@ export default function Rooms() {
                     <button
                         key={room.id}
                         onClick={() => navigate(`/rooms/${room.id}`)}
-                        className="border rounded p-4 text-left hover:bg-gray-50"
+                        className="card text-left hover:bg-gray-100"
                     >
                         <h3 className="font-semibold break-words">{room.name}</h3>
-                        <p className="text-sm text-gray-600">Anfitrión: {room.host_name}</p>
+                        <p className="text-sm muted">Anfitrión: {room.host_name}</p>
                         <p className="text-sm">
                             {room.listeners} / {room.max_listeners} escuchando
                         </p>

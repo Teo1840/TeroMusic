@@ -1,38 +1,31 @@
 import { useEffect, useState } from "react";
 import api from "../api/client";
+import { errorMessage } from "../lib/format";
 
 export default function Metrics() {
 
-    const [plays, setPlays] = useState(0);
+    const [plays, setPlays] = useState(null);
+    const [error, setError] = useState("");
 
     useEffect(() => {
-
-        async function loadMetrics() {
-
-            const response =
-                await api.get("/metrics/plays");
-
-            setPlays(response.data.plays);
-        }
-
-        loadMetrics();
-
+        api.get("/metrics/plays")
+            .then(({ data }) => setPlays(data.plays))
+            .catch((err) => setError(errorMessage(err, "No se pudieron cargar las métricas.")));
     }, []);
 
     return (
-        <div className="p-4 sm:p-8">
+        <div className="page">
 
-            <h1 className="text-2xl sm:text-3xl font-bold">
-                Metrics
-            </h1>
+            <h1 className="page-title mb-6">Métricas</h1>
 
-            <div className="text-5xl mt-8">
-                {plays}
-            </div>
+            {error && <p className="notice max-w-sm" role="alert">{error}</p>}
 
-            <p>
-                Total plays
-            </p>
+            {!error && (
+                <div className="card max-w-sm">
+                    <p className="text-5xl font-bold tabular-nums">{plays ?? "–"}</p>
+                    <p className="muted mt-1">Reproducciones en total</p>
+                </div>
+            )}
 
         </div>
     );

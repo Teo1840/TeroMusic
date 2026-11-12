@@ -111,10 +111,14 @@ services:
       minio:
         condition: service_started
 
+  # Worker Pool: varias copias independientes leen de la misma cola
+  # (worker_ingesta.q). Con prefetch=1, RabbitMQ le da una canción a cada copia
+  # libre. Sin container_name, porque un nombre fijo impide tener varias copias.
   worker_ingesta:
     build: ./services/worker_ingesta
-    container_name: worker_ingesta
     restart: unless-stopped
+    deploy:
+      replicas: ${WORKER_REPLICAS:-3}
     environment:
       RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASS}@rabbitmq:5672/
       MINIO_ENDPOINT: minio:9000

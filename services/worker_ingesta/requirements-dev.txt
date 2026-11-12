@@ -1,0 +1,2 @@
+# Solo para los tests (pytest). No van en la imagen.
+pytest==8.3.3

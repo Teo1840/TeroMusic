@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { getToken } from "./auth";
 
 /**
  * Conexión en vivo con una sala (rooms_service).
@@ -24,6 +25,7 @@ export function positionAt(playback, now) {
     return position;
 }
 
+/** Conexión con la sala `roomId`, o ninguna si es null. */
 export function useRoom(roomId) {
 
     const [state, setState] = useState(null);      // { room, playback, queue, suggestions, listeners }
@@ -44,6 +46,16 @@ export function useRoom(roomId) {
     }, []);
 
     useEffect(() => {
+        // Al cambiar de sala (o salir: roomId null) no queda nada de la anterior.
+        setState(null);
+        setMe(null);
+        setError("");
+        setFatal("");
+        if (!roomId) {
+            setStatus("idle");
+            return undefined;
+        }
+
         let stopped = false;
         let retryMs = 1000;
         let retryTimer = null;
@@ -58,7 +70,7 @@ export function useRoom(roomId) {
             setStatus("connecting");
 
             ws.onopen = () => {
-                ws.send(JSON.stringify({ type: "auth", token: localStorage.getItem("access_token") }));
+                ws.send(JSON.stringify({ type: "auth", token: getToken() }));
             };
 
             ws.onmessage = (event) => {

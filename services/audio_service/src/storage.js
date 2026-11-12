@@ -29,8 +29,21 @@ async function readChunk(key, num, size) {
   return Buffer.concat(parts);
 }
 
+/** Archivo chico entero (ej. waveform.json), o null si no existe. */
+async function readSmall(key) {
+  try {
+    const stream = await client.getObject(config.bucket, key);
+    const parts = [];
+    for await (const part of stream) parts.push(part);
+    return Buffer.concat(parts);
+  } catch (error) {
+    if (['NotFound', 'NoSuchKey', 'NoSuchBucket'].includes(error.code)) return null;
+    throw error;
+  }
+}
+
 async function ping() {
   await client.bucketExists(config.bucket);
 }
 
-module.exports = { client, stat, readChunk, ping };
+module.exports = { client, stat, readChunk, readSmall, ping };

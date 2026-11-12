@@ -37,4 +37,12 @@ function keyFor(song, songId, bitrate) {
   return rendition?.processed_key || null;
 }
 
-module.exports = { CatalogUnavailable, getSong, keyFor };
+/** Clave en MinIO del waveform.json: el worker lo deja en la misma carpeta que los MP3. */
+function waveformKeyFor(song, songId) {
+  const renditions = Array.isArray(song.renditions) ? song.renditions : [];
+  const first = renditions.find((r) => typeof r.processed_key === 'string');
+  if (first) return `${first.processed_key.slice(0, first.processed_key.lastIndexOf('/') + 1)}waveform.json`;
+  return config.keyTemplate.replaceAll('{song_id}', songId).replace(/[^/]*$/, 'waveform.json');
+}
+
+module.exports = { CatalogUnavailable, getSong, keyFor, waveformKeyFor };

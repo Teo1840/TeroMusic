@@ -1,13 +1,8 @@
+import { formatTime } from "../lib/format";
 import { ArrowDownIcon, ArrowUpIcon, CheckIcon, CloseIcon, PlusIcon } from "./Icons";
 import SongSearch from "./SongSearch";
 
-function formatDuration(seconds) {
-    if (!Number.isFinite(seconds) || seconds <= 0) return "";
-    const s = Math.round(seconds);
-    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
-}
-
-function IconButton({ label, onClick, disabled, danger, children }) {
+function IconButton({ label, onClick, disabled, children }) {
     return (
         <button
             type="button"
@@ -15,7 +10,7 @@ function IconButton({ label, onClick, disabled, danger, children }) {
             disabled={disabled}
             aria-label={label}
             title={label}
-            className={`p-2 sm:p-1 rounded hover:bg-gray-100 disabled:opacity-30 disabled:hover:bg-transparent ${danger ? "text-red-600" : ""}`}
+            className="btn-icon"
         >
             {children}
         </button>
@@ -33,7 +28,7 @@ export default function RoomQueue({ queue, suggestions, songs, canControl, me, s
     }
 
     return (
-        <div className="border rounded p-4 mb-6 space-y-4">
+        <div className="card mb-6 space-y-4">
 
             <SongSearch
                 songs={songs}
@@ -47,20 +42,20 @@ export default function RoomQueue({ queue, suggestions, songs, canControl, me, s
                 <h3 className="font-semibold mb-2">A continuación ({queue.length})</h3>
 
                 {queue.length === 0 && (
-                    <p className="text-sm text-gray-500">
+                    <p className="text-sm muted">
                         La cola está vacía. Cuando termine la canción, la sala queda en silencio.
                     </p>
                 )}
 
                 <ol className="space-y-1">
                     {queue.map((item, index) => (
-                        <li key={item.item_id} className="flex items-center gap-2 border rounded px-3 py-1.5">
-                            <span className="text-sm text-gray-500 w-5">{index + 1}</span>
+                        <li key={item.item_id} className="flex items-center gap-2 border border-black px-3 py-1.5">
+                            <span className="text-sm muted w-5 tabular-nums">{index + 1}</span>
                             <span className="flex-1 min-w-0 break-words">
                                 {item.title}
-                                <span className="block text-xs text-gray-500 truncate">agregada por {item.added_by.name}</span>
+                                <span className="block text-xs muted truncate">agregada por {item.added_by.name}</span>
                             </span>
-                            <span className="text-xs text-gray-500">{formatDuration(item.duration_sec)}</span>
+                            <span className="text-xs muted tabular-nums">{item.duration_sec > 0 && formatTime(item.duration_sec)}</span>
                             {canControl && (
                                 <>
                                     <IconButton
@@ -79,7 +74,6 @@ export default function RoomQueue({ queue, suggestions, songs, canControl, me, s
                                     </IconButton>
                                     <IconButton
                                         label="Sacar de la cola"
-                                        danger
                                         onClick={() => send({ type: "queue_remove", item_id: item.item_id })}
                                     >
                                         <CloseIcon />
@@ -96,17 +90,17 @@ export default function RoomQueue({ queue, suggestions, songs, canControl, me, s
                     <h3 className="font-semibold mb-2">Sugerencias ({suggestions.length})</h3>
 
                     {suggestions.length === 0 && (
-                        <p className="text-sm text-gray-500">
+                        <p className="text-sm muted">
                             Sugerí una canción y el anfitrión decide si la agrega a la cola.
                         </p>
                     )}
 
                     <ul className="space-y-1">
                         {suggestions.map((item) => (
-                            <li key={item.item_id} className="flex items-center gap-2 border border-dashed rounded px-3 py-1.5">
+                            <li key={item.item_id} className="flex items-center gap-2 border border-dashed border-black px-3 py-1.5">
                                 <span className="flex-1 min-w-0 break-words">
                                     {item.title}
-                                    <span className="block text-xs text-gray-500 truncate">
+                                    <span className="block text-xs muted truncate">
                                         sugerida por {item.added_by.user_id === me?.user_id ? "vos" : item.added_by.name}
                                     </span>
                                 </span>
@@ -120,7 +114,6 @@ export default function RoomQueue({ queue, suggestions, songs, canControl, me, s
                                         </IconButton>
                                         <IconButton
                                             label="Rechazar"
-                                            danger
                                             onClick={() => send({ type: "suggestion_reject", item_id: item.item_id })}
                                         >
                                             <CloseIcon />

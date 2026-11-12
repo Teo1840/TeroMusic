@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import api from "../api/client";
+import { getToken } from "./auth";
+
+/**
+ * Aviso entre reproductores (detail: quién arrancó). Al sonar uno, los demás se pausan:
+ * los del catálogo se pausan entre sí, y la sala en vivo se silencia para este usuario.
+ */
+export const PLAY_EVENT = "teromusic:play";
 
 // Saltos de tiempo mayores a esto son seeks, no reproducción: no se cuentan.
 const MAX_TICK_SEC = 1.5;
@@ -9,7 +16,7 @@ const MAX_TICK_SEC = 1.5;
  * Usa fetch con keepalive para que el aviso salga aunque se cierre la pestaña.
  */
 function reportPlayed(body) {
-    const token = localStorage.getItem("access_token");
+    const token = getToken();
     if (!token) return;
 
     fetch("/api/v1/audio/played", {

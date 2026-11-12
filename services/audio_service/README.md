@@ -87,6 +87,36 @@ Content-Type: application/json
 - Al cerrar la pestana usar `fetch(url, { method: 'POST', keepalive: true, headers, body })`:
   `navigator.sendBeacon` no puede mandar el header `Authorization`.
 
+## GET /audio/waveform/{song_id}
+
+Forma de onda para la barra del reproductor (la usa `AudioPlayer` del catalogo).
+
+```
+GET /audio/waveform/{song_id}
+Authorization: Bearer <jwt>
+
+200 { "version": 1, "points": 200, "peaks": [0.24, 0.51, ...] }
+```
+
+- Lee `waveform.json`, que worker_ingesta deja en la misma carpeta que los MP3
+  (`processed/{song_id}/`). `peaks` son picos normalizados de 0 a 1.
+- Se cachea en Redis (`audio:{clave}:waveform`, `CACHE_TTL_SEC`). Header `X-Cache: HIT / MISS`.
+- Errores: 400 (id invalido), 401 (sin token), 404 (no existe la cancion o el archivo,
+  ej. canciones procesadas antes del waveform), 409 (no esta PUBLICADO), 503.
+
+## Varias copias (balanceo de carga)
+
+El servicio no guarda estado propio (la cache esta en Redis), asi que puede correr
+con varias copias detras del gateway:
+
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.scale.yml up -d --build
+```
+
+nginx las reparte con round-robin y el header `X-Upstream` dice que copia atendio.
+Como la cache es compartida, un fragmento que leyo una copia ya es HIT en la otra.
+Con varias copias no se publica el puerto 8003: se entra por el gateway.
+
 ## Cache (cache-aside con Redis)
 
 El archivo se divide en fragmentos de `CHUNK_SIZE` (1 MiB). Para cada

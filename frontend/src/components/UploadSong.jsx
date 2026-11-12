@@ -1,23 +1,13 @@
 import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import api from "../api/client";
+import { errorMessage } from "../lib/format";
 
 const POLL_MS = 2000;
 const MAX_POLLS = 90; // ~3 minutos esperando al worker
 
-// El user_id viaja en el "sub" del JWT; lo usamos como artist_id.
-function getUserIdFromToken() {
-    const token = localStorage.getItem("access_token");
-    if (!token) return null;
-
-    try {
-        const payload = token.split(".")[1]
-            .replace(/-/g, "+")
-            .replace(/_/g, "/");
-        return JSON.parse(atob(payload)).sub || null;
-    } catch {
-        return null;
-    }
-}
+// Los mismos formatos que acepta catalog_service.
+const ACCEPTED = [".wav", ".mp3"];
 
 // "mi_cancion-final.wav" → "mi cancion final"
 function titleFromFileName(name) {
@@ -28,7 +18,12 @@ function titleFromFileName(name) {
         .trim();
 }
 
-export default function UploadSong({ onPublished }) {
+/**
+ * Subida de canciones. catalog_service responde enseguida (202) y el worker
+ * procesa el audio aparte: acá se consulta el estado hasta que quede PUBLICADO.
+ * El artista no se manda: el gateway lo saca del JWT.
+ */
+export default function UploadSong() {
 
     const [title, setTitle] = useState("");
     const [file, setFile] = useState(null);
@@ -51,13 +46,12 @@ export default function UploadSong({ onPublished }) {
                 if (data.status === "PUBLICADO") {
                     setStatus("done");
                     setMessage(`"${data.title}" ya está publicada.`);
-                    onPublished?.();
                     return;
                 }
 
                 if (data.status === "FALLIDO") {
                     setStatus("error");
-                    setMessage("El procesamiento del audio falló.");
+                    setMessage("No se pudo procesar el audio.");
                     return;
                 }
             } catch {
@@ -74,27 +68,28 @@ export default function UploadSong({ onPublished }) {
         }, POLL_MS);
     }
 
-    async function handleSubmit(event) {
+    function pickFile(picked) {
+        setFile(picked);
+        // Se completa con el nombre del archivo, salvo que el título ya se haya escrito a mano.
+        if (picked && (!title.trim() || title === autoTitle.current)) {
+            autoTitle.current = titleFromFileName(picked.name);
+            setTitle(autoTitle.current);
+        }
+    }
 
+    async function handleSubmit(event) {
         event.preventDefault();
         setMessage("");
 
-        if (!file || !file.name.toLowerCase().endsWith(".wav")) {
+        const name = file?.name.toLowerCase() || "";
+        if (!ACCEPTED.some((ext) => name.endsWith(ext))) {
             setStatus("error");
-            setMessage("Elegí un archivo .wav.");
-            return;
-        }
-
-        const artistId = getUserIdFromToken();
-        if (!artistId) {
-            setStatus("error");
-            setMessage("No se pudo leer tu usuario. Volvé a iniciar sesión.");
+            setMessage("Elegí un archivo .wav o .mp3.");
             return;
         }
 
         const form = new FormData();
         form.append("title", title.trim());
-        form.append("artist_id", artistId);
         form.append("file", file);
 
         setStatus("uploading");
@@ -118,27 +113,23 @@ export default function UploadSong({ onPublished }) {
 
         } catch (err) {
             setStatus("error");
-            setMessage(err.response?.data?.detail || "No se pudo subir la canción.");
+            setMessage(errorMessage(err, "No se pudo subir la canción."));
         }
     }
 
     const busy = status === "uploading" || status === "processing";
 
     return (
-        <form
-            onSubmit={handleSubmit}
-            className="border rounded p-4 mb-8 space-y-3 max-w-xl"
-        >
-            <h2 className="text-xl font-semibold">
-                Subir canción
-            </h2>
+        <form onSubmit={handleSubmit} className="card space-y-3 max-w-xl">
+
+            <h2 className="section-title">Subir canción</h2>
 
             <input
                 type="text"
                 placeholder="Título"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                className="w-full border p-2"
+                className="field"
                 required
                 disabled={busy}
             />
@@ -146,41 +137,28 @@ export default function UploadSong({ onPublished }) {
             <input
                 ref={fileInput}
                 type="file"
-                accept=".wav,audio/wav"
-                onChange={(e) => {
-                    const picked = e.target.files[0] || null;
-                    setFile(picked);
-                    // Se completa con el nombre del archivo, salvo que el título ya se haya escrito a mano.
-                    if (picked && (!title.trim() || title === autoTitle.current)) {
-                        autoTitle.current = titleFromFileName(picked.name);
-                        setTitle(autoTitle.current);
-                    }
-                }}
-                className="w-full"
+                accept={`${ACCEPTED.join(",")},audio/wav,audio/mpeg`}
+                onChange={(e) => pickFile(e.target.files[0] || null)}
+                className="w-full text-sm file:mr-3 file:border file:border-black file:bg-white file:px-3 file:py-1 hover:file:bg-black hover:file:text-white"
                 required
                 disabled={busy}
             />
 
             {status === "uploading" && (
-                <div className="w-full bg-gray-200 rounded h-2">
-                    <div
-                        className="bg-blue-500 h-2 rounded"
-                        style={{ width: `${progress}%` }}
-                    />
+                <div className="w-full h-2 border border-black" aria-hidden="true">
+                    <div className="h-full bg-black" style={{ width: `${progress}%` }} />
                 </div>
             )}
 
             {message && (
-                <p className={status === "error" ? "text-red-500" : status === "done" ? "text-green-600" : ""}>
+                <p className="notice" role={status === "error" ? "alert" : "status"}>
                     {message}
+                    {status === "done" && <> <Link to="/catalog" className="link">Escucharla en el catálogo</Link></>}
+                    {status === "processing" && <> <Link to="/my-songs" className="link">Ver en Mis canciones</Link></>}
                 </p>
             )}
 
-            <button
-                type="submit"
-                disabled={busy}
-                className="border p-2 px-4 disabled:opacity-50"
-            >
+            <button type="submit" disabled={busy} className="btn-primary">
                 {status === "uploading"
                     ? `Subiendo ${progress}%`
                     : status === "processing"
