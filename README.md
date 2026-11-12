@@ -48,6 +48,23 @@ Hay healthchecks y volumenes persistentes para los cuatro servicios base.
 `docker compose down` conserva volumenes; `docker compose down -v` borra datos.
 No borrar volumenes para resolver diferencias de credenciales.
 
+## Servicios
+
+Con el Compose levantado, la app queda en http://localhost:5173. Cada servicio
+tiene su README con mas detalle.
+
+| Servicio | Que hace | Acceso local | README |
+| --- | --- | --- | --- |
+| frontend | Aplicacion web (React) | http://localhost:5173 | [frontend](frontend/README.md) |
+| gateway | Entrada unica: login, rutas y limites | http://localhost:8080 | [gateway](gateway/README.md) |
+| user_service | Registro, login y JWT | http://localhost:8011/docs | [user_service](services/user_service/README.md) |
+| catalog_service | Subida (.wav/.mp3) y listado de canciones | http://localhost:8000/docs | [catalog_service](services/catalog_service/README.md) |
+| worker_ingesta | Convierte a MP3 128/320 kbps y genera la forma de onda | - | [worker_ingesta](services/worker_ingesta/README.md) |
+| audio_service | Streaming de audio | http://localhost:8003 | [audio_service](services/audio_service/README.md) |
+| metrics_service | Metricas de reproducciones | http://localhost:8004/docs | [metrics_service](services/metrics_service/README.md) |
+| notification_service | Notificaciones | http://localhost:8005/docs | [notification_service](services/notification_service/README.md) |
+| rooms_service | Salas en vivo | http://localhost:8006 | [rooms_service](services/rooms_service/README.md) |
+
 ## Eventos y metricas
 
 Los contratos del equipo estan en `contracts/README.md`.
