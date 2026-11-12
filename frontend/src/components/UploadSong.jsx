@@ -154,6 +154,7 @@ export default function UploadSong() {
                 <p className="notice" role={status === "error" ? "alert" : "status"}>
                     {message}
                     {status === "done" && <> <Link to="/catalog" className="link">Escucharla en el catálogo</Link></>}
+                    {status === "processing" && <> <Link to="/my-songs" className="link">Ver en Mis canciones</Link></>}
                 </p>
             )}
 

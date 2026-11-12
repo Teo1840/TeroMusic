@@ -8,6 +8,7 @@ import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Catalog from "./pages/Catalog";
 import Upload from "./pages/Upload";
+import MySongs from "./pages/MySongs";
 import Metrics from "./pages/Metrics";
 import Rooms from "./pages/Rooms";
 import Room from "./pages/Room";
@@ -51,6 +52,15 @@ export default function App() {
                 element={
                     <ProtectedRoute>
                         <Upload />
+                    </ProtectedRoute>
+                }
+            />
+
+            <Route
+                path="/my-songs"
+                element={
+                    <ProtectedRoute>
+                        <MySongs />
                     </ProtectedRoute>
                 }
             />
