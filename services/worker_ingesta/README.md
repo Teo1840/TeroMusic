@@ -23,6 +23,24 @@ audio.uploaded.v1 ──► descarga el original de MinIO (audio/raw/...)
 - Escucha la cola `worker_ingesta.q`. Procesa **una canción a la vez** (es trabajo pesado de CPU).
 - Acepta cualquier formato que lea FFmpeg (el catálogo hoy deja subir `.wav` y `.mp3`).
 
+## Worker Pool: varias copias
+
+El Compose levanta **3 copias** (`WORKER_REPLICAS` en `.env`). Todas leen de la misma cola, y
+como cada una pide un mensaje por vez (`prefetch_count=1`), RabbitMQ le da una canción a cada
+copia libre. Si una copia se cae a mitad de una canción, el mensaje no se confirmó y lo toma otra.
+
+```
+docker compose logs -f worker_ingesta     # logs de todas las copias (worker_ingesta-1, -2, -3)
+docker compose up -d --scale worker_ingesta=5 worker_ingesta   # cambiar la cantidad en el momento
+```
+
+Medido con 81 canciones de ~3–4 min en 8 núcleos: con 1 copia, ~30 s por canción (~2 por minuto);
+con 3, ~40–50 s cada una porque comparten CPU, pero ~4 por minuto.
+
+El registro de eventos ya procesados es de cada copia (en memoria). Si dos copias procesan la
+misma canción, no pasa nada: sobrescriben los mismos archivos en `processed/{song_id}/` y el
+catálogo descarta los eventos repetidos.
+
 ## Errores
 
 - Los errores pasajeros se **reintentan hasta 3 veces** (`MAX_ATTEMPTS`), esperando cada vez más.
