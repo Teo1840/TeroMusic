@@ -14,6 +14,7 @@ import Playlist from "./pages/Playlist";
 import Metrics from "./pages/Metrics";
 import Rooms from "./pages/Rooms";
 import Room from "./pages/Room";
+import Notifications from "./pages/Notifications";
 
 import ProtectedRoute from "./components/ProtectedRoute";
 
@@ -111,6 +112,14 @@ export default function App() {
                     </ProtectedRoute>
                 }
             />
+            <Route
+                path="/notifications"
+                element={
+                    <ProtectedRoute>
+                        <Notifications />
+                    </ProtectedRoute>
+                }
+/>
 
             <Route
                 path="*"

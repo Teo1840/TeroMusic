@@ -2,7 +2,7 @@ from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr
-
+from typing import Literal
 
 class UserRegister(BaseModel):
     email: EmailStr
@@ -17,6 +17,10 @@ class UserLogin(BaseModel):
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str
+
+
+class RoleUpdate(BaseModel):
+    role: Literal["user", "artist", "admin"]
 
 
 class UserResponse(BaseModel):
