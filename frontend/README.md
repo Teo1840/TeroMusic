@@ -32,6 +32,10 @@ Todas, salvo login y registro, piden haber iniciado sesión.
 - El token se guarda en `localStorage` (`access_token`, [src/lib/auth.js](src/lib/auth.js))
   y se manda en cada pedido ([src/api/client.js](src/api/client.js)). Si el gateway responde
   `401`, se vuelve al login.
+- Cada reproductor ([src/components/AudioPlayer.jsx](src/components/AudioPlayer.jsx)) pide la URL
+  firmada del stream, la forma de onda y la metadata del audio. Para no mandar esos pedidos de
+  todas las canciones juntas (el gateway corta con `429` si se pasan del límite), se arma recién
+  cuando su tarjeta se acerca a la pantalla.
 
 ## Estilo
 

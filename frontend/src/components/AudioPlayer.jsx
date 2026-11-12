@@ -112,7 +112,38 @@ function WaveformBar({ peaks, current, duration, onSeek }) {
     );
 }
 
+/**
+ * Monta el reproductor recién cuando la tarjeta se acerca a la pantalla: cada uno hace
+ * varios pedidos (URL firmada, forma de onda, metadata del audio) y con un catálogo largo
+ * pedirlos todos juntos supera el rate limit del gateway (429).
+ */
 export default function AudioPlayer({ songId }) {
+
+    const boxRef = useRef(null);
+    const [visible, setVisible] = useState(typeof IntersectionObserver === "undefined");
+
+    useEffect(() => {
+        if (visible || !boxRef.current) return;
+        const observer = new IntersectionObserver(
+            (entries) => {
+                if (entries.some((e) => e.isIntersecting)) {
+                    setVisible(true);
+                    observer.disconnect();
+                }
+            },
+            { rootMargin: "200px" }
+        );
+        observer.observe(boxRef.current);
+        return () => observer.disconnect();
+    }, [visible]);
+
+    if (!visible) {
+        return <div ref={boxRef} className="mt-2 h-16" aria-hidden="true" />;
+    }
+    return <Player songId={songId} />;
+}
+
+function Player({ songId }) {
 
     const audioRef = useRef(null);
     const { src, onError, onLoadedData } = useSignedStreamUrl(songId, audioRef);

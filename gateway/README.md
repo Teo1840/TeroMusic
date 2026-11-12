@@ -34,8 +34,14 @@ Escucha en http://localhost:8080.
 
 | Qué | Límite |
 |---|---|
-| Cualquier pedido | 20 por segundo (ráfagas de 40) |
+| Cualquier pedido | 20 por segundo (ráfagas de 100) |
+| Stream de audio (`/audio/stream/`) | 50 por segundo (ráfagas de 200) |
 | Login y registro | 30 por minuto |
 | Subir canciones | 6 por minuto |
 
 Al pasarse, responde `429`. Tamaño máximo de subida: 100 MB.
+
+El stream tiene su propio límite, separado del general: ya lo protege la URL firmada que vence,
+y el navegador pide muchos rangos del archivo al adelantar o arrastrar la barra. Las ráfagas
+son amplias porque el catálogo carga varios reproductores a la vez y, con Docker Desktop,
+todos los dispositivos de la red llegan con la misma IP.
