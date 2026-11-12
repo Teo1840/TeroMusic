@@ -1,9 +1,5 @@
 import { useState } from "react";
-
-// Minúsculas y sin tildes, para que "cancion" encuentre "Canción".
-function normalize(text) {
-    return (text ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
-}
+import { filterByTitle, normalize } from "../lib/format";
 
 const MAX_RESULTS = 10;
 
@@ -13,10 +9,8 @@ const MAX_RESULTS = 10;
  */
 export default function SongSearch({ songs, label, icon, actionIcon, onPick }) {
     const [search, setSearch] = useState("");
-    const term = normalize(search);
-    const results = term
-        ? songs.filter((song) => normalize(song.title).includes(term)).slice(0, MAX_RESULTS)
-        : [];
+    const hasTerm = normalize(search) !== "";
+    const results = hasTerm ? filterByTitle(songs, search).slice(0, MAX_RESULTS) : [];
 
     function pick(song) {
         onPick(song);
@@ -33,21 +27,21 @@ export default function SongSearch({ songs, label, icon, actionIcon, onPick }) {
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     placeholder="Buscar por nombre..."
-                    className="border p-1 min-w-0 flex-1 max-w-full"
+                    className="field p-1 min-w-0 flex-1 max-w-full"
                 />
             </label>
 
-            {term && (
-                <ul className="mt-2 border rounded divide-y max-h-60 overflow-y-auto">
+            {hasTerm && (
+                <ul className="mt-2 border border-black divide-y divide-black max-h-60 overflow-y-auto">
                     {results.length === 0 && (
-                        <li className="px-3 py-2 text-gray-500">No hay canciones con ese nombre.</li>
+                        <li className="px-3 py-2 muted">No hay canciones con ese nombre.</li>
                     )}
                     {results.map((song) => (
                         <li key={song.id}>
                             <button
                                 type="button"
                                 onClick={() => pick(song)}
-                                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-100"
+                                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-black hover:text-white"
                             >
                                 <span className="flex-1 min-w-0 break-words">{song.title}</span>
                                 {actionIcon}

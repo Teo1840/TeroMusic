@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { getToken } from "./auth";
 
 /**
  * Conexión en vivo con una sala (rooms_service).
@@ -58,7 +59,7 @@ export function useRoom(roomId) {
             setStatus("connecting");
 
             ws.onopen = () => {
-                ws.send(JSON.stringify({ type: "auth", token: localStorage.getItem("access_token") }));
+                ws.send(JSON.stringify({ type: "auth", token: getToken() }));
             };
 
             ws.onmessage = (event) => {

@@ -1,1 +1,72 @@
 @import "tailwindcss";
+
+/*
+ * Estilo de la app: blanco y negro, bordes rectos, sin sombras.
+ * Las clases de abajo se repiten en todas las pantallas; cambiarlas acá cambia toda la app.
+ */
+
+@layer base {
+    body {
+        @apply bg-white text-black antialiased;
+    }
+
+    button:not(:disabled) {
+        cursor: pointer;
+    }
+}
+
+@layer components {
+    /* Botón con borde. */
+    .btn {
+        @apply inline-flex items-center justify-center gap-2 border border-black bg-white px-4 py-2
+            hover:bg-black hover:text-white disabled:opacity-40 disabled:hover:bg-white disabled:hover:text-black;
+    }
+
+    /* Botón principal: relleno negro. */
+    .btn-primary {
+        @apply inline-flex items-center justify-center gap-2 border border-black bg-black px-4 py-2 text-white
+            hover:bg-white hover:text-black disabled:opacity-40 disabled:hover:bg-black disabled:hover:text-white;
+    }
+
+    /* Botón chico de solo ícono (lleva aria-label). */
+    .btn-icon {
+        @apply inline-flex items-center justify-center p-2 sm:p-1 hover:bg-black hover:text-white
+            disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-black;
+    }
+
+    /* Campo de texto. */
+    .field {
+        @apply w-full border border-black bg-white p-2 focus:outline-2 focus:outline-offset-0 focus:outline-black;
+    }
+
+    /* Caja con borde: formularios, tarjetas, paneles. */
+    .card {
+        @apply border border-black p-4;
+    }
+
+    /* Aviso (error o confirmación): caja con borde, el texto dice qué pasó. */
+    .notice {
+        @apply border border-black px-3 py-2 text-sm;
+    }
+
+    .link {
+        @apply underline underline-offset-2 hover:no-underline;
+    }
+
+    /* Texto secundario. */
+    .muted {
+        @apply text-gray-600;
+    }
+
+    .page {
+        @apply p-4 sm:p-8;
+    }
+
+    .page-title {
+        @apply text-2xl sm:text-3xl font-bold;
+    }
+
+    .section-title {
+        @apply text-xl font-semibold;
+    }
+}

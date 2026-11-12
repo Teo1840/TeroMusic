@@ -5,6 +5,7 @@ import { NextIcon, PauseIcon, PlayIcon, PlaybackIcon, VolumeIcon, VolumeOffIcon 
 import RoomQueue from "../components/RoomQueue";
 import SongSearch from "../components/SongSearch";
 import { usePlayTracking, useSignedStreamUrl } from "../lib/audio";
+import { formatTime } from "../lib/format";
 import { positionAt, useRoom } from "../lib/room";
 
 // Sincronización (ver services/rooms_service/README.md, "Cómo se sincroniza").
@@ -26,12 +27,6 @@ function median(values) {
 
 function setRate(audio, rate) {
     if (audio.playbackRate !== rate) audio.playbackRate = rate;
-}
-
-function formatTime(seconds) {
-    if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
-    const s = Math.floor(seconds);
-    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
 function roleOf(room, userId) {
@@ -209,15 +204,15 @@ export default function Room() {
 
     if (fatal) {
         return (
-            <div className="p-4 sm:p-8">
+            <div className="page">
                 <p className="text-xl mb-4">{fatal}</p>
-                <Link to="/rooms" className="underline text-blue-600">Volver a las salas</Link>
+                <Link to="/rooms" className="link">Volver a las salas</Link>
             </div>
         );
     }
 
     if (!state) {
-        return <p className="p-4 sm:p-8">Conectando con la sala...</p>;
+        return <p className="page muted">Conectando con la sala...</p>;
     }
 
     const { room, listeners, queue, suggestions } = state;
@@ -229,48 +224,48 @@ export default function Room() {
     const startingIn = playback.playing ? Math.ceil((playback.updated_at_ms - clockNow) / 1000) : 0;
 
     return (
-        <div className="p-4 sm:p-8 max-w-4xl">
+        <div className="page max-w-4xl">
 
             <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
-                <h1 className="text-2xl sm:text-3xl font-bold break-words min-w-0">{room.name}</h1>
+                <h1 className="page-title break-words min-w-0">{room.name}</h1>
                 <div className="flex flex-wrap gap-2">
-                    <button onClick={copyLink} className="border px-3 py-1 rounded">
+                    <button onClick={copyLink} className="btn py-1">
                         {copied ? "¡Link copiado!" : "Copiar link"}
                     </button>
                     {role === "host" && (
-                        <button onClick={closeRoom} className="border border-red-500 text-red-600 px-3 py-1 rounded">
+                        <button onClick={closeRoom} className="btn py-1">
                             Cerrar sala
                         </button>
                     )}
                 </div>
             </div>
 
-            <p className="text-gray-600 mb-6">
+            <p className="muted mb-6">
                 {room.visibility === "public" ? "Sala pública" : "Sala privada"} · Sos{" "}
                 <strong>{ROLE_LABEL[role].toLowerCase()}</strong>
-                {status === "reconnecting" && <span className="text-orange-600"> · Reconectando...</span>}
+                {status === "reconnecting" && <strong> · Reconectando...</strong>}
             </p>
 
-            {error && <p className="text-red-500 mb-4">{error}</p>}
+            {error && <p className="notice mb-4" role="alert">{error}</p>}
 
-            <div className="border rounded p-4 mb-6 space-y-3">
+            <div className="card mb-6 space-y-3">
 
                 <p className="text-lg break-words">
                     {playback.title
                         ? <><PlaybackIcon playing={playback.playing} /> <strong>{playback.title}</strong></>
                         : "Todavía no hay música."}
-                    {startingIn > 0 && <span className="text-gray-500"> · arranca en {startingIn} s</span>}
+                    {startingIn > 0 && <span className="muted"> · arranca en {startingIn} s</span>}
                 </p>
 
                 {playback.playing && driftMs !== null && (
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs muted">
                         Sincronización: {Math.abs(driftMs) <= 150 ? "en sincronía" : "ajustando"} ({driftMs > 0 ? "+" : ""}{driftMs} ms)
                     </p>
                 )}
 
                 {songId && (
                     <div className="flex items-center gap-2">
-                        <span className="text-sm w-10 text-right">{formatTime(positionSec)}</span>
+                        <span className="text-sm w-10 text-right tabular-nums">{formatTime(positionSec)}</span>
                         <input
                             type="range"
                             min={0}
@@ -285,7 +280,7 @@ export default function Room() {
                             onBlur={commitSeek}
                             className="flex-1 accent-black"
                         />
-                        <span className="text-sm w-10">{formatTime(durationSec)}</span>
+                        <span className="text-sm w-10 tabular-nums">{formatTime(durationSec)}</span>
                     </div>
                 )}
 
@@ -293,7 +288,7 @@ export default function Room() {
                     {canControl && songId && (
                         <button
                             onClick={() => send({ type: playback.playing ? "pause" : "play" })}
-                            className="inline-flex items-center gap-2 bg-black text-white px-4 py-2 rounded"
+                            className="btn-primary"
                         >
                             {playback.playing
                                 ? <><PauseIcon /> Pausa</>
@@ -304,7 +299,7 @@ export default function Room() {
                     {canControl && queue.length > 0 && (
                         <button
                             onClick={() => send({ type: "next" })}
-                            className="inline-flex items-center gap-2 border px-4 py-2 rounded"
+                            className="btn"
                         >
                             <NextIcon /> Siguiente
                         </button>
@@ -317,7 +312,7 @@ export default function Room() {
                             aria-label={muted ? "Activar sonido" : "Silenciar"}
                             aria-pressed={muted}
                             title={muted ? "Activar sonido" : "Silenciar"}
-                            className="p-2 sm:p-1 rounded hover:bg-gray-100"
+                            className="btn-icon"
                         >
                             {muted ? <VolumeOffIcon size={18} /> : <VolumeIcon size={18} />}
                         </button>
@@ -339,7 +334,7 @@ export default function Room() {
                     {blocked && (
                         <button
                             onClick={unlockAudio}
-                            className="inline-flex items-center gap-2 bg-orange-500 text-white px-4 py-2 rounded"
+                            className="btn-primary"
                         >
                             <VolumeIcon /> Activar audio
                         </button>
@@ -357,7 +352,7 @@ export default function Room() {
                 )}
 
                 {!canControl && (
-                    <p className="text-sm text-gray-500">
+                    <p className="text-sm muted">
                         La música la controlan el anfitrión y los coanfitriones.
                     </p>
                 )}
@@ -383,7 +378,7 @@ export default function Room() {
                 send={send}
             />
 
-            <h2 className="text-xl font-semibold mb-2">
+            <h2 className="section-title mb-2">
                 Escuchando ({listeners.length} / {room.max_listeners})
             </h2>
 
@@ -391,20 +386,20 @@ export default function Room() {
                 {listeners.map((listener) => {
                     const listenerRole = roleOf(room, listener.user_id);
                     return (
-                        <li key={listener.user_id} className="flex flex-wrap items-center gap-x-3 gap-y-1 border rounded px-3 py-2">
+                        <li key={listener.user_id} className="flex flex-wrap items-center gap-x-3 gap-y-1 border border-black px-3 py-2">
                             <span className="flex-1 min-w-0 break-words">
                                 {listener.name}
                                 {listener.user_id === me?.user_id && " (vos)"}
                             </span>
                             {listenerRole !== "listener" && (
-                                <span className="text-xs bg-gray-200 px-2 py-0.5 rounded">
+                                <span className="text-xs bg-black text-white px-2 py-0.5">
                                     {ROLE_LABEL[listenerRole]}
                                 </span>
                             )}
                             {role === "host" && listenerRole === "listener" && (
                                 <button
                                     onClick={() => send({ type: "promote", user_id: listener.user_id })}
-                                    className="text-sm underline py-1"
+                                    className="text-sm link py-1"
                                 >
                                     Hacer coanfitrión
                                 </button>
@@ -412,7 +407,7 @@ export default function Room() {
                             {role === "host" && listenerRole === "cohost" && (
                                 <button
                                     onClick={() => send({ type: "demote", user_id: listener.user_id })}
-                                    className="text-sm underline text-red-600 py-1"
+                                    className="text-sm link py-1"
                                 >
                                     Quitar coanfitrión
                                 </button>

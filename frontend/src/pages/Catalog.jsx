@@ -1,13 +1,8 @@
-
 import { useEffect, useState } from "react";
 import api from "../api/client";
 import AudioPlayer from "../components/AudioPlayer";
 import UploadSong from "../components/UploadSong";
-
-// Minúsculas y sin acentos, para que "cancion" encuentre "Canción".
-function normalize(text) {
-    return (text || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-}
+import { errorMessage, filterByTitle } from "../lib/format";
 
 export default function Catalog() {
 
@@ -16,24 +11,15 @@ export default function Catalog() {
     const [error, setError] = useState("");
     const [query, setQuery] = useState("");
 
-    const search = normalize(query.trim());
-    const visibleSongs = search
-        ? songs.filter(song => normalize(song.title).includes(search))
-        : songs;
+    const visibleSongs = filterByTitle(songs, query);
 
     async function loadSongs() {
         try {
-            const response = await api.get("/catalog/songs");
-
-            setSongs(response.data);
+            const { data } = await api.get("/catalog/songs");
+            setSongs(data);
             setError("");
-
         } catch (err) {
-            setError(
-                err.response?.data?.detail ||
-                "No se pudo cargar el catálogo."
-            );
-
+            setError(errorMessage(err, "No se pudo cargar el catálogo."));
         } finally {
             setLoading(false);
         }
@@ -44,65 +30,41 @@ export default function Catalog() {
     }, []);
 
     return (
-        <div className="p-4 sm:p-8">
+        <div className="page">
 
-            <h1 className="text-2xl sm:text-3xl font-bold mb-6">
-                Catálogo
-            </h1>
+            <h1 className="page-title mb-6">Catálogo</h1>
 
             <UploadSong onPublished={loadSongs} />
 
             <input
                 type="search"
                 value={query}
-                onChange={e => setQuery(e.target.value)}
+                onChange={(e) => setQuery(e.target.value)}
                 placeholder="Buscar por nombre..."
                 aria-label="Buscar canciones por nombre"
-                className="border rounded p-2 mb-6 w-full max-w-md"
+                className="field max-w-md mb-6"
             />
 
-            {loading && (
-                <p>Cargando canciones...</p>
-            )}
+            {loading && <p className="muted">Cargando canciones...</p>}
 
-            {error && (
-                <p className="text-red-500">
-                    {error}
-                </p>
-            )}
+            {error && <p className="notice mb-4" role="alert">{error}</p>}
 
             {!loading && !error && songs.length === 0 && (
-                <p>No hay canciones disponibles.</p>
+                <p className="muted">Todavía no hay canciones. Subí la primera.</p>
             )}
 
             {!loading && !error && songs.length > 0 && visibleSongs.length === 0 && (
-                <p>Ninguna canción coincide con "{query.trim()}".</p>
+                <p className="muted">Ninguna canción coincide con "{query.trim()}".</p>
             )}
 
             {!loading && !error && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-
-                    {visibleSongs.map(song => (
-
-                        <div
-                            key={song.id}
-                            className="border rounded p-4 min-w-0"
-                        >
-
-                            <h2 className="font-semibold break-words">
-                                {song.title}
-                            </h2>
-
+                    {visibleSongs.map((song) => (
+                        <article key={song.id} className="card min-w-0">
+                            <h2 className="font-semibold break-words">{song.title}</h2>
                             <AudioPlayer songId={song.id} />
-
-                            <p className="text-xs text-gray-500 break-all mt-2">
-                                {song.artist_id}
-                            </p>
-
-                        </div>
-
+                        </article>
                     ))}
-
                 </div>
             )}
 
