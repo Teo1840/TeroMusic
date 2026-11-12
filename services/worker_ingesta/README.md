@@ -36,3 +36,25 @@ python3 process_local.py ruta/a/cancion.wav
 ```
 
 Crea la carpeta `salida_<nombre>/` con `128.mp3`, `320.mp3` y `waveform.json`. Necesita FFmpeg instalado.
+
+## Tests
+
+17 tests con pytest (más uno marcado como falla conocida). Los de FFmpeg generan el audio
+dentro del test (un tono de 2 s), así que no hacen falta archivos de ejemplo.
+
+- `tests/test_audio_processor.py`: de `.wav` y de `.mp3` salen 128 y 320 kbps con la duración
+  correcta y `waveform.json` con 200 picos entre 0 y 1. Archivo corrupto → `CORRUPT_FILE` sin
+  reintento, sin audio → `UNSUPPORTED_FORMAT`, demasiado largo → `TOO_LONG`.
+- `tests/test_worker.py`: reintentos solo de errores temporales (hasta `max_attempts`), un
+  evento repetido no se procesa dos veces, mensajes inválidos a dead-letter, y si no se puede
+  publicar el resultado el mensaje vuelve a la cola.
+
+**Falla conocida:** un archivo en silencio total queda FALLIDO, porque `loudnorm` deja valores
+inválidos y LAME aborta. El test `test_silencio_da_forma_de_onda_plana` lo documenta
+(`xfail`); cuando se arregle, el test avisa para sacar la marca.
+
+Necesitan FFmpeg, así que se corren en la imagen del worker. Desde la raíz del repo (PowerShell):
+
+```powershell
+docker compose run --rm --no-deps -v "${PWD}/services/worker_ingesta:/code" worker_ingesta sh -c "pip install -q -r requirements-dev.txt && python -m pytest -q"
+```
