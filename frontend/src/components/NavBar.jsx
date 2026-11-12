@@ -5,6 +5,7 @@ import { CloseIcon, MenuIcon } from "./Icons";
 
 const LINKS = [
     { to: "/catalog", label: "Catálogo" },
+    { to: "/upload", label: "Subir" },
     { to: "/rooms", label: "Salas en vivo" },
     { to: "/metrics", label: "Métricas" }
 ];

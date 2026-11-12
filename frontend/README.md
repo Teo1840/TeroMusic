@@ -18,7 +18,8 @@ Es el único puerto que se abre: el resto de los servicios sigue accesible solo 
 | Ruta | Qué hay |
 |---|---|
 | `/login`, `/register` | Entrar y crear cuenta (al registrarse se entra directo) |
-| `/catalog` | Canciones publicadas, reproductor y subida de canciones (`.wav` o `.mp3`). El título se completa solo con el nombre del archivo |
+| `/catalog` | Canciones publicadas, buscador y reproductor |
+| `/upload` | Subida de canciones (`.wav` o `.mp3`). El título se completa solo con el nombre del archivo y se avisa cuando queda publicada |
 | `/rooms` | Lista de salas en vivo y creación de salas |
 | `/rooms/:roomId` | Sala en vivo: reproducción sincronizada, cola, sugerencias y buscador de canciones |
 | `/metrics` | Métricas de reproducciones |
@@ -43,7 +44,7 @@ toda la app.
 | Carpeta | Contenido |
 |---|---|
 | `src/pages` | Una pantalla por archivo |
-| `src/components` | Reproductor, cola de la sala, buscador, subida, formulario de login/registro, barra de navegación |
+| `src/components` | Reproductor, cola de la sala, buscador, formulario de subida, formulario de login/registro, barra de navegación |
 | `src/lib` | Audio, conexión a las salas, sesión (token) y formato (tiempos, búsqueda, mensajes de error) |
 | `src/api` | Cliente HTTP |
 

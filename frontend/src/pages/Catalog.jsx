@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import api from "../api/client";
 import AudioPlayer from "../components/AudioPlayer";
-import UploadSong from "../components/UploadSong";
 import { errorMessage, filterByTitle } from "../lib/format";
 
 export default function Catalog() {
@@ -32,9 +32,10 @@ export default function Catalog() {
     return (
         <div className="page">
 
-            <h1 className="page-title mb-6">Catálogo</h1>
-
-            <UploadSong onPublished={loadSongs} />
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-6">
+                <h1 className="page-title">Catálogo</h1>
+                <Link to="/upload" className="btn">Subir canción</Link>
+            </div>
 
             <input
                 type="search"
@@ -50,7 +51,9 @@ export default function Catalog() {
             {error && <p className="notice mb-4" role="alert">{error}</p>}
 
             {!loading && !error && songs.length === 0 && (
-                <p className="muted">Todavía no hay canciones. Subí la primera.</p>
+                <p className="muted">
+                    Todavía no hay canciones. <Link to="/upload" className="link">Subí la primera</Link>.
+                </p>
             )}
 
             {!loading && !error && songs.length > 0 && visibleSongs.length === 0 && (

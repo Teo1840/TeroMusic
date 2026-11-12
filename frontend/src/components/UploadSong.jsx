@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import api from "../api/client";
 import { errorMessage } from "../lib/format";
 
@@ -22,7 +23,7 @@ function titleFromFileName(name) {
  * procesa el audio aparte: acá se consulta el estado hasta que quede PUBLICADO.
  * El artista no se manda: el gateway lo saca del JWT.
  */
-export default function UploadSong({ onPublished }) {
+export default function UploadSong() {
 
     const [title, setTitle] = useState("");
     const [file, setFile] = useState(null);
@@ -45,7 +46,6 @@ export default function UploadSong({ onPublished }) {
                 if (data.status === "PUBLICADO") {
                     setStatus("done");
                     setMessage(`"${data.title}" ya está publicada.`);
-                    onPublished?.();
                     return;
                 }
 
@@ -120,7 +120,7 @@ export default function UploadSong({ onPublished }) {
     const busy = status === "uploading" || status === "processing";
 
     return (
-        <form onSubmit={handleSubmit} className="card mb-8 space-y-3 max-w-xl">
+        <form onSubmit={handleSubmit} className="card space-y-3 max-w-xl">
 
             <h2 className="section-title">Subir canción</h2>
 
@@ -153,6 +153,7 @@ export default function UploadSong({ onPublished }) {
             {message && (
                 <p className="notice" role={status === "error" ? "alert" : "status"}>
                     {message}
+                    {status === "done" && <> <Link to="/catalog" className="link">Escucharla en el catálogo</Link></>}
                 </p>
             )}
 
