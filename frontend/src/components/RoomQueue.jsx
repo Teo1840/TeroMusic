@@ -1,4 +1,5 @@
 import { ArrowDownIcon, ArrowUpIcon, CheckIcon, CloseIcon, PlusIcon } from "./Icons";
+import SongSearch from "./SongSearch";
 
 function formatDuration(seconds) {
     if (!Number.isFinite(seconds) || seconds <= 0) return "";
@@ -14,7 +15,7 @@ function IconButton({ label, onClick, disabled, danger, children }) {
             disabled={disabled}
             aria-label={label}
             title={label}
-            className={`p-1 rounded hover:bg-gray-100 disabled:opacity-30 disabled:hover:bg-transparent ${danger ? "text-red-600" : ""}`}
+            className={`p-2 sm:p-1 rounded hover:bg-gray-100 disabled:opacity-30 disabled:hover:bg-transparent ${danger ? "text-red-600" : ""}`}
         >
             {children}
         </button>
@@ -27,29 +28,20 @@ function IconButton({ label, onClick, disabled, danger, children }) {
  * Oyentes: ven la cola y sugieren canciones.
  */
 export default function RoomQueue({ queue, suggestions, songs, canControl, me, send }) {
-
-    function addSong(songId) {
-        if (!songId) return;
-        send({ type: canControl ? "queue_add" : "suggest", song_id: songId });
+    function addSong(song) {
+        send({ type: canControl ? "queue_add" : "suggest", song_id: song.id });
     }
 
     return (
         <div className="border rounded p-4 mb-6 space-y-4">
 
-            <label className="flex flex-wrap items-center gap-2 text-sm">
-                <PlusIcon />
-                {canControl ? "Agregar a la cola:" : "Sugerir canción:"}
-                <select
-                    value=""
-                    onChange={(e) => addSong(e.target.value)}
-                    className="border p-1"
-                >
-                    <option value="">Elegir...</option>
-                    {songs.map((song) => (
-                        <option key={song.id} value={song.id}>{song.title}</option>
-                    ))}
-                </select>
-            </label>
+            <SongSearch
+                songs={songs}
+                icon={<PlusIcon />}
+                label={canControl ? "Agregar a la cola:" : "Sugerir canción:"}
+                actionIcon={<PlusIcon />}
+                onPick={addSong}
+            />
 
             <div>
                 <h3 className="font-semibold mb-2">A continuación ({queue.length})</h3>
@@ -64,9 +56,9 @@ export default function RoomQueue({ queue, suggestions, songs, canControl, me, s
                     {queue.map((item, index) => (
                         <li key={item.item_id} className="flex items-center gap-2 border rounded px-3 py-1.5">
                             <span className="text-sm text-gray-500 w-5">{index + 1}</span>
-                            <span className="flex-1">
+                            <span className="flex-1 min-w-0 break-words">
                                 {item.title}
-                                <span className="text-xs text-gray-500"> · agregada por {item.added_by.name}</span>
+                                <span className="block text-xs text-gray-500 truncate">agregada por {item.added_by.name}</span>
                             </span>
                             <span className="text-xs text-gray-500">{formatDuration(item.duration_sec)}</span>
                             {canControl && (
@@ -112,10 +104,10 @@ export default function RoomQueue({ queue, suggestions, songs, canControl, me, s
                     <ul className="space-y-1">
                         {suggestions.map((item) => (
                             <li key={item.item_id} className="flex items-center gap-2 border border-dashed rounded px-3 py-1.5">
-                                <span className="flex-1">
+                                <span className="flex-1 min-w-0 break-words">
                                     {item.title}
-                                    <span className="text-xs text-gray-500">
-                                        {" "}· sugerida por {item.added_by.user_id === me?.user_id ? "vos" : item.added_by.name}
+                                    <span className="block text-xs text-gray-500 truncate">
+                                        sugerida por {item.added_by.user_id === me?.user_id ? "vos" : item.added_by.name}
                                     </span>
                                 </span>
                                 {canControl && (

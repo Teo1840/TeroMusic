@@ -62,9 +62,9 @@ export default function Rooms() {
     }
 
     return (
-        <div className="p-8 max-w-4xl">
+        <div className="p-4 sm:p-8 max-w-4xl">
 
-            <h1 className="text-3xl font-bold mb-2">Salas en vivo</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold mb-2">Salas en vivo</h1>
             <p className="text-gray-600 mb-6">
                 Escuchen la misma canción, al mismo tiempo, desde distintos dispositivos.
             </p>
@@ -84,7 +84,7 @@ export default function Rooms() {
                         className="w-full border p-2"
                     />
 
-                    <div className="flex gap-4">
+                    <div className="flex flex-wrap gap-x-4 gap-y-2">
                         <label className="flex items-center gap-1">
                             <input
                                 type="radio"
@@ -160,7 +160,7 @@ export default function Rooms() {
                         onClick={() => navigate(`/rooms/${room.id}`)}
                         className="border rounded p-4 text-left hover:bg-gray-50"
                     >
-                        <h3 className="font-semibold">{room.name}</h3>
+                        <h3 className="font-semibold break-words">{room.name}</h3>
                         <p className="text-sm text-gray-600">Anfitrión: {room.host_name}</p>
                         <p className="text-sm">
                             {room.listeners} / {room.max_listeners} escuchando

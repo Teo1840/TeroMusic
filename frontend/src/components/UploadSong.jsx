@@ -19,6 +19,15 @@ function getUserIdFromToken() {
     }
 }
 
+// "mi_cancion-final.wav" → "mi cancion final"
+function titleFromFileName(name) {
+    return name
+        .replace(/\.[^.]+$/, "")
+        .replace(/[_-]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
 export default function UploadSong({ onPublished }) {
 
     const [title, setTitle] = useState("");
@@ -28,6 +37,7 @@ export default function UploadSong({ onPublished }) {
     const [progress, setProgress] = useState(0);
 
     const fileInput = useRef(null);
+    const autoTitle = useRef("");   // último título puesto a partir del nombre del archivo
     const pollTimer = useRef(null);
 
     // Cortar el polling si se sale de la página.
@@ -100,6 +110,7 @@ export default function UploadSong({ onPublished }) {
             setStatus("processing");
             setMessage("Subida completa. Procesando audio...");
             setTitle("");
+            autoTitle.current = "";
             setFile(null);
             if (fileInput.current) fileInput.current.value = "";
 
@@ -136,7 +147,15 @@ export default function UploadSong({ onPublished }) {
                 ref={fileInput}
                 type="file"
                 accept=".wav,audio/wav"
-                onChange={(e) => setFile(e.target.files[0] || null)}
+                onChange={(e) => {
+                    const picked = e.target.files[0] || null;
+                    setFile(picked);
+                    // Se completa con el nombre del archivo, salvo que el título ya se haya escrito a mano.
+                    if (picked && (!title.trim() || title === autoTitle.current)) {
+                        autoTitle.current = titleFromFileName(picked.name);
+                        setTitle(autoTitle.current);
+                    }
+                }}
                 className="w-full"
                 required
                 disabled={busy}

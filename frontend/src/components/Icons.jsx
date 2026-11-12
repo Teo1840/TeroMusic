@@ -103,6 +103,10 @@ export function CheckIcon(props) {
     return <StrokeIcon {...props}><path d="M5 12.5l4.5 4.5L19 7.5" /></StrokeIcon>;
 }
 
+export function MenuIcon(props) {
+    return <StrokeIcon {...props}><path d="M4 7h16M4 12h16M4 17h16" /></StrokeIcon>;
+}
+
 export function PlusIcon(props) {
     return <StrokeIcon {...props}><path d="M12 5v14M5 12h14" /></StrokeIcon>;
 }
