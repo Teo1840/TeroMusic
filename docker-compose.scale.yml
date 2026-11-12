@@ -1,0 +1,19 @@
+# Balanceo de carga: dos copias de audio_service y de rooms_service detrás del gateway.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.scale.yml up -d --build
+#
+# Las copias no pueden compartir un puerto local, así que acá no se publican:
+# se llega a ellas solo por el gateway (http://localhost:8080), que reparte los
+# pedidos entre las dos (header X-Upstream de la respuesta).
+# Para volver a una sola copia: docker compose up -d --build
+
+services:
+  audio_service:
+    deploy:
+      replicas: 2
+    ports: !reset []
+
+  rooms_service:
+    deploy:
+      replicas: 2
+    ports: !reset []
