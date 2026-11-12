@@ -2,6 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import api from "../api/client";
 import { getToken } from "./auth";
 
+/**
+ * Aviso entre reproductores (detail: quién arrancó). Al sonar uno, los demás se pausan:
+ * los del catálogo se pausan entre sí, y la sala en vivo se silencia para este usuario.
+ */
+export const PLAY_EVENT = "teromusic:play";
+
 // Saltos de tiempo mayores a esto son seeks, no reproducción: no se cuentan.
 const MAX_TICK_SEC = 1.5;
 

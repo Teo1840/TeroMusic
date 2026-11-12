@@ -1,6 +1,7 @@
 import { Navigate } from "react-router-dom";
 import { clearToken, hasValidToken } from "../lib/auth";
 import NavBar from "./NavBar";
+import RoomBar from "./RoomBar";
 
 /** Pantallas que piden haber iniciado sesión. Sin token vigente, al login. */
 export default function ProtectedRoute({ children }) {
@@ -14,6 +15,7 @@ export default function ProtectedRoute({ children }) {
         <>
             <NavBar />
             <main>{children}</main>
+            <RoomBar />
         </>
     );
 }

@@ -1,12 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import api from "../api/client";
-import { usePlayTracking, useSignedStreamUrl } from "../lib/audio";
+import { PLAY_EVENT, usePlayTracking, useSignedStreamUrl } from "../lib/audio";
 import { formatTime } from "../lib/format";
 import { PauseIcon, PlayIcon, VolumeIcon, VolumeOffIcon } from "./Icons";
 
 const VOLUME_KEY = "player_volume";
-// Aviso entre reproductores: al dar play en uno, los demás se pausan.
-const PLAY_EVENT = "teromusic:play";
 
 function savedVolume() {
     try {
