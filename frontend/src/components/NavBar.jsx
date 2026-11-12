@@ -7,6 +7,7 @@ const LINKS = [
     { to: "/catalog", label: "Catálogo" },
     { to: "/upload", label: "Subir" },
     { to: "/my-songs", label: "Mis canciones" },
+    { to: "/playlists", label: "Playlists" },
     { to: "/rooms", label: "Salas en vivo" },
     { to: "/metrics", label: "Métricas" }
 ];
