@@ -5,8 +5,10 @@ import logging
 import uuid
 
 import aio_pika
+from sqlalchemy import select
 
 from .config import settings
+from . import minio_client
 from .database import SessionLocal
 from .models import ProcessedEvent, Song, SongStatus
 
@@ -60,8 +62,13 @@ async def handle(message: aio_pika.abc.AbstractIncomingMessage) -> None:
             if await session.get(ProcessedEvent, event_id) is not None:
                 outcome = "duplicado"
             else:
-                song = await session.get(Song, song_id)
+                song = await session.scalar(
+                    select(Song).where(Song.id == song_id).with_for_update()
+                )
                 if song is None:
+                    # Un borrado puede ocurrir mientras el worker transcodifica.
+                    # Al llegar su resultado limpiamos las salidas tardías.
+                    await minio_client.delete_song_files(song_id)
                     outcome = "sin_cancion"
                 else:
                     try:

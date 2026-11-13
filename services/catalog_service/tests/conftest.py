@@ -71,7 +71,18 @@ def published(monkeypatch):
 
 
 @pytest.fixture
-def client(session_maker, uploads, published, monkeypatch):
+def deleted_files(monkeypatch):
+    deleted = []
+
+    async def fake_delete(song_id):
+        deleted.append(song_id)
+
+    monkeypatch.setattr(minio_client, "delete_song_files", fake_delete)
+    return deleted
+
+
+@pytest.fixture
+def client(session_maker, uploads, published, deleted_files, monkeypatch):
     """API sin lifespan (no conecta a Postgres, MinIO ni RabbitMQ)."""
 
     async def override_session():
