@@ -17,12 +17,19 @@ Es el único puerto que se abre: el resto de los servicios sigue accesible solo 
 
 | Ruta | Qué hay |
 |---|---|
-| `/login`, `/register` | Entrar y crear cuenta (al registrarse se entra directo) |
-| `/catalog` | Canciones publicadas, buscador y reproductor |
+| `/login`, `/register` | Entrar y crear cuenta (al registrarse se entra directo). El registro pide un nombre de artista opcional |
+| `/catalog` | Canciones publicadas con su artista, buscador (por título o artista) y reproductor con forma de onda |
 | `/upload` | Subida de canciones (`.wav` o `.mp3`). El título se completa solo con el nombre del archivo y se avisa cuando queda publicada |
+| `/my-songs` | Canciones que subió el usuario, en cualquier estado, con opción de borrar. Espera `GET /songs/mine` y `DELETE /songs/{id}` del catálogo, que todavía no existen: hasta entonces muestra "todavía no disponible" |
+| `/playlists` | Playlists del usuario: crear, buscar y borrar |
+| `/playlists/:playlistId` | Una playlist: renombrar, agregar canciones con el buscador, sacar, reordenar y escuchar |
+| `/profile` | Perfil: cambiar el nombre de artista (`GET/PATCH /auth/me`) |
 | `/rooms` | Lista de salas en vivo y creación de salas |
 | `/rooms/:roomId` | Sala en vivo: reproducción sincronizada, cola, sugerencias y buscador de canciones |
 | `/metrics` | Métricas de reproducciones |
+
+Mientras estás en una sala en vivo y navegás a otra página, la música sigue sonando y aparece
+una barra abajo (qué suena, volver a la sala, silenciar o salir).
 
 Todas, salvo login y registro, piden haber iniciado sesión.
 

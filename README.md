@@ -57,8 +57,8 @@ tiene su README con mas detalle.
 | --- | --- | --- | --- |
 | frontend | Aplicacion web (React) | http://localhost:5173 | [frontend](frontend/README.md) |
 | gateway | Entrada unica: login, rutas y limites | http://localhost:8080 | [gateway](gateway/README.md) |
-| user_service | Registro, login y JWT | http://localhost:8011/docs | [user_service](services/user_service/README.md) |
-| catalog_service | Subida (.wav/.mp3) y listado de canciones | http://localhost:8000/docs | [catalog_service](services/catalog_service/README.md) |
+| user_service | Registro, login, JWT y perfil (nombre de artista) | http://localhost:8011/docs | [user_service](services/user_service/README.md) |
+| catalog_service | Subida (.wav/.mp3), listado de canciones con su artista y playlists | http://localhost:8000/docs | [catalog_service](services/catalog_service/README.md) |
 | worker_ingesta | Convierte a MP3 128/320 kbps y genera la forma de onda. Worker Pool de 3 copias (`WORKER_REPLICAS`) | - | [worker_ingesta](services/worker_ingesta/README.md) |
 | audio_service | Streaming de audio | http://localhost:8003 | [audio_service](services/audio_service/README.md) |
 | metrics_service | Metricas de reproducciones | http://localhost:8004/docs | [metrics_service](services/metrics_service/README.md) |
@@ -71,6 +71,8 @@ Los contratos del equipo estan en `contracts/README.md`.
 Metricas consume `song.played.v1` de `musicapp.events` mediante `metrics.q`.
 Valida el sobre CloudEvents y el data con los JSON Schema del repositorio;
 usa `id` para deduplicar. Ver `services/metrics_service/README.md`.
+Artistas: `user_service` publica `user.registered.v1` y `user.profile_updated.v1`; catalogo
+guarda una copia del nombre de cada artista (tabla `artists`). Ver `services/catalog_service/README.md`.
 Notificaciones: `notification_service` en http://localhost:8005/docs.
 Historial: `GET /notifications/user/{user_id}`. Ver `services/notification_service/README.md`.
 
