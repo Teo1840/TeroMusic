@@ -65,3 +65,17 @@ def test_email_inexistente_igual_calcula_bcrypt(client, monkeypatch):
     monkeypatch.setattr(auth_router, "verify_password", lambda p, h: calls.append(h) or real(p, h))
     client.post("/login", json={"email": "nadie@example.com", "password": GOOD})
     assert calls == [auth_router.DUMMY_HASH]
+
+
+@pytest.mark.parametrize("password", ["12345678", "ñ" * 36])
+def test_contrasena_en_los_limites_se_acepta(client, password):
+    # 8 caracteres es el mínimo; 36 "ñ" son justo 72 bytes.
+    assert register(client, password=password).status_code == 201
+
+
+def test_login_con_contrasena_enorme_422_sin_calcular_bcrypt(client, monkeypatch):
+    calls = []
+    monkeypatch.setattr(auth_router, "verify_password", lambda p, h: calls.append(h) or False)
+    response = client.post("/login", json={"email": "ana@example.com", "password": "x" * 1025})
+    assert response.status_code == 422
+    assert calls == []

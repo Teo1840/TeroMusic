@@ -154,3 +154,27 @@ def test_detalle_de_una_cancion_y_404(client, run):
     assert body["status"] == "FALLIDO"
     assert body["error_code"] == "CORRUPT_FILE"
     assert client.get(f"/songs/{uuid.uuid4()}").status_code == 404
+
+
+def test_titulo_de_200_caracteres_se_acepta(client):
+    assert upload(client, title="x" * 200).status_code == 202
+
+
+def test_si_rabbitmq_falla_y_minio_tambien_igual_responde_503_y_borra_la_fila(client, run, monkeypatch):
+    from app import minio_client
+
+    async def failing_publish(*args, **kwargs):
+        raise ConnectionError("RabbitMQ caído")
+
+    async def failing_delete(song_id):
+        raise ConnectionError("MinIO caído")
+
+    monkeypatch.setattr(publisher, "publish", failing_publish)
+    monkeypatch.setattr(minio_client, "delete_song_files", failing_delete)
+
+    assert upload(client).status_code == 503
+
+    async def all_songs(session):
+        return (await session.execute(select(Song))).scalars().all()
+
+    assert run(all_songs) == []

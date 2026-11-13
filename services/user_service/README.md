@@ -62,11 +62,12 @@ Tests con pytest, sin Postgres ni RabbitMQ: la base es SQLite en memoria y la
 publicación de eventos está simulada ([tests/conftest.py](tests/conftest.py)).
 
 ```
-pip install -r requirements.txt pytest httpx
+pip install -r requirements.txt -r requirements-dev.txt
 python -m pytest
 ```
 
 - `tests/test_auth.py`: registro con token y evento, contraseñas cortas o de más de 72 bytes
   (`422`), email repetido y registro simultáneo (`409`), login correcto e incorrecto con la
-  misma respuesta, cuentas viejas con contraseña corta siguen entrando, y el hash de relleno
-  cuando el email no existe.
+  misma respuesta, cuentas viejas con contraseña corta siguen entrando, el hash de relleno
+  cuando el email no existe, contraseñas en el límite (8 caracteres, 72 bytes) y login con
+  contraseña enorme rechazado sin calcular bcrypt.
