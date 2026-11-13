@@ -10,10 +10,17 @@ export function normalize(text) {
     return (text ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
 }
 
-/** Canciones cuyo título contiene lo buscado. */
+/** Canciones cuyo título (o artista, si lo tienen) contiene lo buscado. */
 export function filterByTitle(songs, query) {
     const term = normalize(query);
-    return term ? songs.filter((song) => normalize(song.title).includes(term)) : songs;
+    return term
+        ? songs.filter((song) => normalize(song.title).includes(term) || normalize(song.artist_name).includes(term))
+        : songs;
+}
+
+/** Nombre del artista para mostrar. null si catálogo todavía no recibió su perfil. */
+export function artistLabel(song) {
+    return song.artist_name || "Artista desconocido";
 }
 
 // Mensajes del backend que el usuario ve seguido, en castellano.

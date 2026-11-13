@@ -8,6 +8,7 @@ export default function Register() {
             submitLabel="Registrarse"
             busyLabel="Registrando..."
             statusMessages={{ 409: "Ya existe una cuenta con ese email." }}
+            askDisplayName
             footer={{ text: "¿Ya tenés cuenta?", link: "Iniciar sesión", to: "/login" }}
         />
     );

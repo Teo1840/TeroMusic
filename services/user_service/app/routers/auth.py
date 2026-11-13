@@ -11,7 +11,7 @@ from fastapi import (
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..events import publish_user_registered
+from ..events import REGISTERED, publish, registered_data, username_from_email
 from ..models import User
 from ..schemas import (
     UserRegister,
@@ -56,7 +56,8 @@ def register(
     user = User(
         email=data.email,
         hashed_password=hash_password(data.password),
-        role="user"
+        role="user",
+        display_name=data.display_name or username_from_email(data.email)
     )
 
     db.add(user)
@@ -65,9 +66,10 @@ def register(
 
     # Se publica después de responder: el alta no espera a RabbitMQ.
     background_tasks.add_task(
-        publish_user_registered,
+        publish,
+        REGISTERED,
         user.id,
-        user.email,
+        registered_data(user.id, user.email, user.display_name),
         x_correlation_id
     )
 

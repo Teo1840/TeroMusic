@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "contracts/events/user.profile_updated.v1.schema.json",
+  "title": "user.profile_updated.v1",
+  "description": "Un usuario cambió su perfil público (nombre de artista). Publica: user_service. Consume: catalog_service. Lleva el perfil completo, no solo lo que cambió: el consumidor reemplaza lo que tenía si updated_at es más nuevo.",
+  "type": "object",
+  "required": ["user_id", "username", "display_name", "updated_at"],
+  "additionalProperties": false,
+  "properties": {
+    "user_id": { "type": "string", "format": "uuid" },
+    "username": { "type": "string", "minLength": 3, "maxLength": 32, "pattern": "^[a-zA-Z0-9_.]+$" },
+    "display_name": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "updated_at": { "description": "Momento del cambio. Sirve para ignorar un evento viejo que llega tarde.", "type": "string", "format": "date-time" }
+  }
+}

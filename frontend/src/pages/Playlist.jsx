@@ -4,7 +4,7 @@ import api from "../api/client";
 import AudioPlayer from "../components/AudioPlayer";
 import { ArrowDownIcon, ArrowUpIcon, CloseIcon, PlusIcon } from "../components/Icons";
 import SongSearch from "../components/SongSearch";
-import { errorMessage, formatTime } from "../lib/format";
+import { artistLabel, errorMessage, formatTime } from "../lib/format";
 
 /*
  * Usa estos endpoints de catalog_service (app/playlists.py):
@@ -119,7 +119,7 @@ export default function Playlist() {
             await api.post(`/catalog/playlists/${playlistId}/songs`, { song_id: song.id });
             setPlaylist((prev) => ({
                 ...prev,
-                songs: [...prev.songs, { id: song.id, title: song.title, duration: song.duration, status: "PUBLICADO" }]
+                songs: [...prev.songs, { id: song.id, title: song.title, artist_name: song.artist_name, duration: song.duration, status: "PUBLICADO" }]
             }));
             setNotice(`Se agregó "${song.title}".`);
         } catch (err) {
@@ -302,6 +302,7 @@ export default function Playlist() {
                                             className="flex-1 min-w-0 text-left break-words hover:underline underline-offset-2 disabled:no-underline disabled:opacity-50"
                                         >
                                             {song.title}
+                                            <span className="block text-xs muted">{artistLabel(song)}</span>
                                             {!available && <span className="block text-xs muted">No disponible</span>}
                                         </button>
                                         <span className="text-xs muted tabular-nums">

@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .auth import current_user_id
 from .database import get_session
-from .models import Playlist, PlaylistSong, Song, SongStatus
+from .models import Artist, Playlist, PlaylistSong, Song, SongStatus
 
 router = APIRouter(prefix="/playlists", tags=["playlists"])
 
@@ -99,8 +99,9 @@ async def get_playlist(
     """La playlist con sus canciones en orden (status dice si se puede reproducir)."""
     playlist = await _own_playlist(playlist_id, user_id, session)
     result = await session.execute(
-        select(Song)
+        select(Song, Artist.display_name)
         .join(PlaylistSong, PlaylistSong.song_id == Song.id)
+        .outerjoin(Artist, Artist.id == Song.artist_id)
         .where(PlaylistSong.playlist_id == playlist_id)
         .order_by(PlaylistSong.position)
     )
@@ -108,8 +109,14 @@ async def get_playlist(
         "id": str(playlist.id),
         "name": playlist.name,
         "songs": [
-            {"id": str(s.id), "title": s.title, "duration": s.duration, "status": s.status.value}
-            for s in result.scalars()
+            {
+                "id": str(s.id),
+                "title": s.title,
+                "artist_name": artist_name,
+                "duration": s.duration,
+                "status": s.status.value,
+            }
+            for s, artist_name in result.all()
         ],
     }
 
