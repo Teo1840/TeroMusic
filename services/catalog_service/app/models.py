@@ -68,3 +68,18 @@ class PlaylistSong(Base):
         ForeignKey("songs.id", ondelete="CASCADE"), primary_key=True
     )
     position: Mapped[int] = mapped_column(Integer)
+
+
+class Artist(Base):
+    """Copia local del perfil público de cada usuario (lo manda user_service por eventos).
+
+    No es la fuente de verdad: sirve para mostrar el nombre del artista sin
+    consultar a user_service en cada listado."""
+
+    __tablename__ = "artists"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True)  # = user_id = Song.artist_id
+    username: Mapped[str] = mapped_column(String(32))
+    display_name: Mapped[str] = mapped_column(String(64))
+    # Momento del perfil guardado; un evento más viejo no lo pisa.
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

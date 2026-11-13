@@ -16,7 +16,7 @@ API en http://localhost:8000/docs. Desde el front, todo pasa por el gateway: `/a
 | Método | Ruta | Qué hace |
 |---|---|---|
 | `POST` | `/songs/upload` | Sube una canción (`title` + `file`, formulario multipart). Responde `202` con `song_id` |
-| `GET` | `/songs` | Lista las canciones **publicadas** |
+| `GET` | `/songs` | Lista las canciones **publicadas**, con `artist_name` |
 | `GET` | `/songs/{song_id}` | Estado de una canción (sirve para saber si el worker ya terminó) |
 | `GET` | `/playlists` | Playlists del usuario: `[{id, name, song_count}]` |
 | `POST` | `/playlists` | Crea una (`{name}`, hasta 100 caracteres). `201` |
@@ -59,6 +59,14 @@ API en http://localhost:8000/docs. Desde el front, todo pasa por el gateway: `/a
 
 Cada evento se procesa una sola vez (se guarda su `id`). Un fallo que llega tarde no
 despublica una canción que ya estaba lista.
+
+## Artistas
+
+La misma cola recibe `user.registered.v1` y `user.profile_updated.v1` y guarda el nombre
+de cada usuario en la tabla `artists`. Con eso `GET /songs`, `GET /songs/{id}` y el detalle
+de una playlist devuelven `artist_name` sin consultar a user_service. Si el artista todavía
+no llegó, `artist_name` es `null`. Un `user.profile_updated.v1` más viejo que lo guardado
+(por `updated_at`) se ignora, y un `user.registered.v1` tardío no pisa un cambio de perfil.
 
 ## Para probar
 

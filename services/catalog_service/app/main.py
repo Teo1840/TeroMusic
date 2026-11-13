@@ -12,7 +12,7 @@ from . import consumer, minio_client, playlists, publisher
 from .auth import current_user_id
 from .config import settings
 from .database import Base, engine, get_session
-from .models import Song, SongStatus
+from .models import Artist, Song, SongStatus
 
 
 @asynccontextmanager
@@ -120,34 +120,43 @@ async def upload_song(
     return {"song_id": str(song_id), "status": song.status.value}
 
 
+def _with_artist():
+    """Canción + nombre del artista. outer join: si catálogo todavía no recibió
+    el evento del usuario, la canción sale igual con artist_name = None."""
+    return select(Song, Artist.display_name).outerjoin(Artist, Artist.id == Song.artist_id)
+
+
 @app.get("/songs")
 async def list_songs(session: AsyncSession = Depends(get_session)):
     result = await session.execute(
-        select(Song).where(Song.status == SongStatus.PUBLICADO)
+        _with_artist().where(Song.status == SongStatus.PUBLICADO)
     )
     return [
         {
             "id": str(s.id),
             "title": s.title,
             "artist_id": str(s.artist_id),
+            "artist_name": artist_name,
             "duration": s.duration,
             "file_uri": s.file_uri,
             "renditions": s.renditions,
         }
-        for s in result.scalars()
+        for s, artist_name in result.all()
     ]
 
 
 @app.get("/songs/{song_id}")
 async def get_song(song_id: uuid.UUID, session: AsyncSession = Depends(get_session)):
     """Estado de una canción (para saber si el worker ya terminó)."""
-    song = await session.get(Song, song_id)
-    if song is None:
+    row = (await session.execute(_with_artist().where(Song.id == song_id))).first()
+    if row is None:
         raise HTTPException(404, "Canción no encontrada")
+    song, artist_name = row
     return {
         "id": str(song.id),
         "title": song.title,
         "artist_id": str(song.artist_id),
+        "artist_name": artist_name,
         "status": song.status.value,
         "duration": song.duration,
         "file_uri": song.file_uri,

@@ -7,13 +7,15 @@ import { errorMessage } from "../lib/format";
 /**
  * Formulario de login y de registro. Los dos endpoints devuelven el JWT,
  * así que al registrarse se entra directo, sin volver a loguearse.
+ * askDisplayName: el registro pide además el nombre de artista (opcional).
  */
-export default function AuthForm({ title, endpoint, submitLabel, busyLabel, statusMessages, footer }) {
+export default function AuthForm({ title, endpoint, submitLabel, busyLabel, statusMessages, footer, askDisplayName = false }) {
 
     const navigate = useNavigate();
 
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
+    const [displayName, setDisplayName] = useState("");
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
 
@@ -23,7 +25,10 @@ export default function AuthForm({ title, endpoint, submitLabel, busyLabel, stat
         setLoading(true);
 
         try {
-            const { data } = await api.post(endpoint, { email, password });
+            const body = { email, password };
+            // Vacío: no se manda y user_service usa la parte del email antes de la @.
+            if (askDisplayName && displayName.trim()) body.display_name = displayName.trim();
+            const { data } = await api.post(endpoint, body);
             if (!data.access_token) throw new Error("El servidor no devolvió un token.");
             saveToken(data.access_token);
             navigate("/catalog");
@@ -53,6 +58,19 @@ export default function AuthForm({ title, endpoint, submitLabel, busyLabel, stat
                     className="field"
                     required
                 />
+
+                {askDisplayName && (
+                    <input
+                        type="text"
+                        placeholder="Nombre de artista (opcional)"
+                        aria-label="Nombre de artista (opcional)"
+                        autoComplete="nickname"
+                        maxLength={64}
+                        value={displayName}
+                        onChange={(e) => setDisplayName(e.target.value)}
+                        className="field"
+                    />
+                )}
 
                 <input
                     type="password"

@@ -68,7 +68,7 @@ def test_agregar_canciones_en_orden_y_contarlas(client, songs):
 
     detail = client.get(f"/playlists/{playlist_id}", headers=AUTH).json()
     assert [s["title"] for s in detail["songs"]] == ["Tema a", "Tema b"]
-    assert detail["songs"][0] == {"id": str(songs["a"]), "title": "Tema a", "duration": 60.0, "status": "PUBLICADO"}
+    assert detail["songs"][0] == {"id": str(songs["a"]), "title": "Tema a", "artist_name": None, "duration": 60.0, "status": "PUBLICADO"}
     assert client.get("/playlists", headers=AUTH).json()[0]["song_count"] == 2
 
 

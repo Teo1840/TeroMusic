@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "contracts/events/user.registered.v1.schema.json",
   "title": "user.registered.v1",
-  "description": "Un usuario completó el registro. Publica: user_service. Consumen: notification_service, metrics_service.",
+  "description": "Un usuario completó el registro. Publica: user_service. Consumen: notification_service, metrics_service, catalog_service. display_name es el nombre de artista que se muestra en el catálogo.",
   "type": "object",
   "required": ["user_id", "email", "username"],
   "additionalProperties": false,

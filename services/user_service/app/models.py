@@ -39,3 +39,14 @@ class User(Base):
         server_default=func.now(),
         nullable=False
     )
+    # Nombre de artista que se ve en el catálogo. NULL en cuentas viejas
+    # hasta que main.backfill_display_names lo completa.
+    display_name = Column(
+        String(64),
+        nullable=True
+    )
+
+    profile_updated_at = Column(
+        DateTime(timezone=True),
+        nullable=True
+    )

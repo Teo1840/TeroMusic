@@ -9,7 +9,8 @@ const LINKS = [
     { to: "/my-songs", label: "Mis canciones" },
     { to: "/playlists", label: "Playlists" },
     { to: "/rooms", label: "Salas en vivo" },
-    { to: "/metrics", label: "Métricas" }
+    { to: "/metrics", label: "Métricas" },
+    { to: "/profile", label: "Perfil" }
 ];
 
 const linkClass = ({ isActive }) =>

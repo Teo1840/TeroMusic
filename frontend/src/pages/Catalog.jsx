@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import api from "../api/client";
 import AudioPlayer from "../components/AudioPlayer";
-import { errorMessage, filterByTitle } from "../lib/format";
+import { artistLabel, errorMessage, filterByTitle } from "../lib/format";
 
 export default function Catalog() {
 
@@ -41,8 +41,8 @@ export default function Catalog() {
                 type="search"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Buscar por nombre..."
-                aria-label="Buscar canciones por nombre"
+                placeholder="Buscar por canción o artista..."
+                aria-label="Buscar canciones por nombre o artista"
                 className="field max-w-md mb-6"
             />
 
@@ -65,6 +65,7 @@ export default function Catalog() {
                     {visibleSongs.map((song) => (
                         <article key={song.id} className="card min-w-0">
                             <h2 className="font-semibold break-words">{song.title}</h2>
+                            <p className="text-sm muted break-words">{artistLabel(song)}</p>
                             <AudioPlayer songId={song.id} />
                         </article>
                     ))}

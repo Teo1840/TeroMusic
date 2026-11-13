@@ -14,7 +14,8 @@ contracts/
 
 | type | Publica | Consume | Cuándo |
 |---|---|---|---|
-| `user.registered.v1` | user_service | notification_service, metrics_service | El usuario terminó el registro |
+| `user.registered.v1` | user_service | notification_service, metrics_service, catalog_service | El usuario terminó el registro |
+| `user.profile_updated.v1` | user_service | catalog_service | El usuario cambió su nombre de artista |
 | `audio.uploaded.v1` | catalog_service | worker_ingesta | El original quedó en MinIO (`raw/…`) |
 | `audio.ready.v1` | worker_ingesta | catalog_service | Las versiones procesadas quedaron en MinIO (`processed/…`) |
 | `audio.failed.v1` | worker_ingesta | catalog_service | La transcodificación falló tras los reintentos |
@@ -30,7 +31,7 @@ contracts/
 | Cola | Bindings |
 |---|---|
 | `worker_ingesta.q` | `audio.uploaded.v1` |
-| `catalog.q` | `audio.ready.v1`, `audio.failed.v1` |
+| `catalog.q` | `audio.ready.v1`, `audio.failed.v1`, `user.registered.v1`, `user.profile_updated.v1` |
 | `metrics.q` | `song.played.v1`, `user.registered.v1`, `room.created.v1` |
 | `notifications.q` | `user.registered.v1`, `room.created.v1`, `audio.uploaded.v1`, `audio.ready.v1`, `audio.failed.v1` |
 
@@ -58,3 +59,8 @@ python contracts/validate.py evento.json   # un archivo concreto
 
 Notificaciones tambien consume eventos de audio: guarda el propietario de
 `audio.uploaded.v1` y notifica con `audio.ready.v1` o `audio.failed.v1`.
+
+Catalogo guarda una copia local de los artistas (`artists`) con `user.registered.v1`
+y `user.profile_updated.v1`, para mostrar el nombre sin consultar a user_service.
+`user.profile_updated.v1` lleva el perfil completo y `updated_at`: si llega un
+evento mas viejo que lo guardado, se ignora.

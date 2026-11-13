@@ -43,7 +43,10 @@ export default function SongSearch({ songs, label, icon, actionIcon, onPick }) {
                                 onClick={() => pick(song)}
                                 className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-black hover:text-white"
                             >
-                                <span className="flex-1 min-w-0 break-words">{song.title}</span>
+                                <span className="flex-1 min-w-0 break-words">
+                                    {song.title}
+                                    {song.artist_name && <span className="block text-xs opacity-70">{song.artist_name}</span>}
+                                </span>
                                 {actionIcon}
                             </button>
                         </li>

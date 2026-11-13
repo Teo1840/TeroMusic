@@ -14,6 +14,7 @@ import Playlist from "./pages/Playlist";
 import Metrics from "./pages/Metrics";
 import Rooms from "./pages/Rooms";
 import Room from "./pages/Room";
+import Profile from "./pages/Profile";
 
 import ProtectedRoute from "./components/ProtectedRoute";
 
@@ -108,6 +109,15 @@ export default function App() {
                 element={
                     <ProtectedRoute>
                         <Room />
+                    </ProtectedRoute>
+                }
+            />
+
+            <Route
+                path="/profile"
+                element={
+                    <ProtectedRoute>
+                        <Profile />
                     </ProtectedRoute>
                 }
             />
