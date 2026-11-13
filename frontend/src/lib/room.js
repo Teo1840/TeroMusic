@@ -25,6 +25,12 @@ export function positionAt(playback, now) {
     return position;
 }
 
+/** La canción llegó al final (sigue en el estado, pero ya no suena nada). */
+export function isOver(playback, now) {
+    if (!playback?.song_id || !(playback.duration_sec > 0)) return false;
+    return positionAt(playback, now) >= playback.duration_sec * 1000;
+}
+
 /** Conexión con la sala `roomId`, o ninguna si es null. */
 export function useRoom(roomId) {
 

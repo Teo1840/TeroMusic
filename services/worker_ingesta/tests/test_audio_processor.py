@@ -112,3 +112,14 @@ def test_sin_ffmpeg_instalado_falla_con_codigo_del_contrato(monkeypatch, tmp_pat
     with pytest.raises(ProcessingError) as error:
         probe(tmp_path / "x.wav")
     assert error.value.code == "TRANSCODE_ERROR"
+
+
+def test_playlist_hls_disfrazada_de_mp3_no_pide_urls(tmp_path):
+    # Si FFmpeg adivinara el formato, abriría la URL (SSRF). Con -f mp3 es un MP3 roto.
+    src = tmp_path / "trampa.mp3"
+    src.write_text("#EXTM3U\n#EXT-X-TARGETDURATION:1\n#EXTINF:1,\nhttp://127.0.0.1:9/x.mp3\n#EXT-X-ENDLIST\n")
+
+    with pytest.raises(ProcessingError) as error:
+        probe(src)
+
+    assert error.value.code == "CORRUPT_FILE"

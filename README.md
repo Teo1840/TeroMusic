@@ -83,3 +83,29 @@ y publica `song.played.v1` con `POST /audio/played`. Ver `services/audio_service
 Salas en vivo: rooms_service (Node.js + WebSockets) en http://localhost:8006.
 Reproduccion sincronizada con anfitrion y coanfitriones, estado en Redis y
 `room.created.v1`. Ver `services/rooms_service/README.md`.
+
+## Seguridad
+
+Revisión de noviembre de 2026. Lo corregido está explicado en el README de cada servicio.
+
+| Problema | Riesgo | Arreglo | Dónde |
+| --- | --- | --- | --- |
+| Un archivo subido podía hacer que FFmpeg pidiera URLs internas (playlist HLS con extensión `.mp3`) | Alto | Formato forzado por extensión y solo protocolo `file` | [worker_ingesta](services/worker_ingesta/README.md#seguridad-formato-de-entrada) |
+| El límite de login por IP se salteaba con un `X-Forwarded-For` inventado | Medio | El proxy del front reemplaza el header y el gateway toma solo la última IP | [gateway](gateway/README.md#límites-de-pedidos-por-ip) |
+| Contraseñas sin largo mínimo | Medio | Entre 8 caracteres y 72 bytes al registrarse | [user_service](services/user_service/README.md#contraseñas-y-login) |
+| El tiempo de respuesta de `/login` revelaba si un email existía | Bajo | Se compara siempre contra un hash | [user_service](services/user_service/README.md#contraseñas-y-login) |
+| Si RabbitMQ fallaba al subir, la canción quedaba en BORRADOR para siempre (y el 503 mostraba el error interno) | Bug | Se deshace la subida; el detalle va al log | [catalog_service](services/catalog_service/README.md#subir-una-canción) |
+| Un título de más de 200 caracteres daba `500` y dejaba el archivo en MinIO | Bug | Se valida el título antes de subir | [catalog_service](services/catalog_service/README.md#subir-una-canción) |
+| Dos registros simultáneos con el mismo email daban `500` | Bug | Responde `409` | [user_service](services/user_service/README.md#contraseñas-y-login) |
+
+Pendiente (riesgo bajo en este entorno local):
+
+- **CORS:** el gateway acepta cualquier `Origin` con `Allow-Credentials`. Como el token va en
+  `Authorization` y no en cookies, hoy no expone datos, pero conviene limitarlo al front.
+- **Docs abiertos:** `/api/v1/auth/docs` y `/openapi.json` de user_service se ven por el gateway.
+- **Canciones ajenas:** `GET /songs/{id}` devuelve canciones de otros en BORRADOR o FALLIDO,
+  con `error_message` y la ruta interna `file_uri`.
+- **Salas:** el tope de oyentes se chequea antes de agregar al oyente; si entran varios a la
+  vez, la sala puede pasarse por poco.
+- **`JWT_SECRET`:** usar 32 caracteres aleatorios o más (`openssl rand -hex 32`). Con el valor
+  de `.env.example` cualquiera puede firmar tokens válidos.

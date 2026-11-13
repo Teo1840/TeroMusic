@@ -40,6 +40,10 @@ app.include_router(playlists.router)
 
 # Formatos aceptados: extensión -> content_type (los dos están en el enum del contrato)
 ALLOWED_FORMATS = {".wav": "audio/wav", ".mp3": "audio/mpeg"}
+# Igual al String(200) de Song.title: se valida antes de subir el archivo a MinIO.
+TITLE_MAX = 200
+
+log = logging.getLogger("catalog")
 
 
 def _sha256(fileobj) -> str:
@@ -57,13 +61,16 @@ def health():
 
 @app.post("/songs/upload", status_code=202)
 async def upload_song(
-    title: str = Form(...),
+    title: str = Form(..., max_length=TITLE_MAX),
     artist_id: uuid.UUID = Depends(current_user_id),  # sale del JWT vía gateway
     file: UploadFile = File(...),
     x_correlation_id: str | None = Header(default=None),
     session: AsyncSession = Depends(get_session),
 ):
-    # 1. Validar formato
+    # 1. Validar título y formato (antes de tocar MinIO)
+    title = " ".join(title.split())
+    if not title:
+        raise HTTPException(400, "El título no puede estar vacío")
     filename = (file.filename or "").lower()
     ext = next((e for e in ALLOWED_FORMATS if filename.endswith(e)), None)
     if ext is None:
@@ -113,11 +120,30 @@ async def upload_song(
             subject=f"song/{song_id}",
             correlation_id=correlation_id,
         )
-    except Exception as exc:
-        raise HTTPException(503, f"No se pudo publicar el evento: {exc}")
+    except Exception:
+        # Sin el evento ningún worker la procesa: quedaría en BORRADOR para siempre.
+        # Se deshace la subida para que el usuario pueda reintentar. El detalle del
+        # error va al log y no a la respuesta (puede traer datos internos).
+        log.exception("No se pudo publicar audio.uploaded.v1 de %s; se deshace la subida", song_id)
+        await _undo_upload(song_id, session)
+        raise HTTPException(503, "No se pudo encolar la canción para procesarla; probá de nuevo")
 
     # 6. Respuesta rápida
     return {"song_id": str(song_id), "status": song.status.value}
+
+
+async def _undo_upload(song_id: uuid.UUID, session: AsyncSession) -> None:
+    try:
+        song = await session.get(Song, song_id)
+        if song is not None:
+            await session.delete(song)
+            await session.commit()
+    except Exception:
+        log.exception("No se pudo borrar la fila de %s", song_id)
+    try:
+        await minio_client.delete_song_files(song_id)
+    except Exception:
+        log.exception("No se pudo borrar el original de %s", song_id)
 
 
 def _with_artist():

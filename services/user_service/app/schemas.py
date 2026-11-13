@@ -14,9 +14,23 @@ def _clean_display_name(value: str | None) -> str | None:
     return value
 
 
+# bcrypt solo usa los primeros 72 bytes: más largo daría una falsa sensación de seguridad.
+PASSWORD_MIN = 8
+PASSWORD_MAX_BYTES = 72
+
+
+def _check_password(value: str) -> str:
+    if len(value) < PASSWORD_MIN:
+        raise ValueError(f"La contraseña tiene que tener al menos {PASSWORD_MIN} caracteres")
+    if len(value.encode("utf-8")) > PASSWORD_MAX_BYTES:
+        raise ValueError(f"La contraseña puede tener hasta {PASSWORD_MAX_BYTES} bytes")
+    return value
+
+
 class UserRegister(BaseModel):
     email: EmailStr
     password: str
+    _password = field_validator("password")(_check_password)
     # Opcional: si no viene, se usa la parte del email antes de la @.
     display_name: str | None = Field(default=None, max_length=64)
 
@@ -25,7 +39,9 @@ class UserRegister(BaseModel):
 
 class UserLogin(BaseModel):
     email: EmailStr
-    password: str
+    # Sin mínimo: las cuentas creadas antes de la regla tienen que poder entrar.
+    # El tope evita gastar CPU con contraseñas enormes.
+    password: str = Field(max_length=1024)
 
 
 class TokenResponse(BaseModel):

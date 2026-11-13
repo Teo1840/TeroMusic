@@ -23,6 +23,29 @@ export function artistLabel(song) {
     return song.artist_name || "Artista desconocido";
 }
 
+/** "Ana María López" → "AL"; "teo" → "T". Para el avatar del perfil. */
+export function initials(name) {
+    const words = (name ?? "").trim().split(/\s+/).filter(Boolean);
+    if (words.length === 0) return "?";
+    const first = [...words[0]][0];
+    const last = words.length > 1 ? [...words[words.length - 1]][0] : "";
+    return (first + last).toUpperCase();
+}
+
+/** Fecha ISO → "noviembre de 2026". "" si no es una fecha válida. */
+export function formatMonthYear(iso) {
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return "";
+    return new Intl.DateTimeFormat("es", { month: "long", year: "numeric" }).format(date);
+}
+
+/** Fecha ISO → "13 de noviembre de 2026". "" si no es una fecha válida. */
+export function formatDate(iso) {
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return "";
+    return new Intl.DateTimeFormat("es", { day: "numeric", month: "long", year: "numeric" }).format(date);
+}
+
 // Mensajes del backend que el usuario ve seguido, en castellano.
 const STATUS_MESSAGES = {
     429: "Demasiados intentos seguidos. Esperá un minuto y probá de nuevo."
