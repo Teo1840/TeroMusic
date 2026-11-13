@@ -1,6 +1,8 @@
-"""Playlists de cada usuario: crear, renombrar, borrar, agregar/sacar canciones y reordenar.
+"""Playlists de cada usuario: crear, renombrar, compartir, borrar, agregar/sacar canciones y reordenar.
 
-El dueño sale de X-User-Id (lo pone el gateway). Una playlist de otro usuario responde 403.
+El dueño sale de X-User-Id (lo pone el gateway). Solo el dueño puede modificarla.
+Una playlist compartida (is_public) la puede ver cualquiera con el link; una privada
+de otro usuario responde 403.
 """
 import uuid
 
@@ -26,6 +28,22 @@ class PlaylistName(BaseModel):
         if not value:
             raise ValueError("El nombre no puede estar vacío")
         return value
+
+
+class PlaylistCreate(PlaylistName):
+    is_public: bool = False
+
+
+class PlaylistUpdate(BaseModel):
+    """PATCH: cambia el nombre, la visibilidad o las dos cosas."""
+
+    name: str | None = Field(default=None, max_length=100)
+    is_public: bool | None = None
+
+    @field_validator("name")
+    @classmethod
+    def not_blank(cls, value: str | None) -> str | None:
+        return None if value is None else PlaylistName.not_blank(value)
 
 
 class AddSong(BaseModel):
@@ -54,8 +72,23 @@ async def _song_ids(playlist_id: uuid.UUID, session: AsyncSession) -> list[uuid.
     return list(result.scalars())
 
 
+async def _visible_playlist(playlist_id: uuid.UUID, user_id: uuid.UUID, session: AsyncSession) -> Playlist:
+    """Para ver: la propia o una compartida."""
+    playlist = await session.get(Playlist, playlist_id)
+    if playlist is None:
+        raise HTTPException(404, "Playlist no encontrada")
+    if playlist.owner_id != user_id and not playlist.is_public:
+        raise HTTPException(403, "La playlist es privada")
+    return playlist
+
+
 def _summary(playlist: Playlist, song_count: int) -> dict:
-    return {"id": str(playlist.id), "name": playlist.name, "song_count": song_count}
+    return {
+        "id": str(playlist.id),
+        "name": playlist.name,
+        "is_public": playlist.is_public,
+        "song_count": song_count,
+    }
 
 
 @router.get("")
@@ -80,11 +113,11 @@ async def list_playlists(
 
 @router.post("", status_code=201)
 async def create_playlist(
-    body: PlaylistName,
+    body: PlaylistCreate,
     user_id: uuid.UUID = Depends(current_user_id),
     session: AsyncSession = Depends(get_session),
 ):
-    playlist = Playlist(owner_id=user_id, name=body.name)
+    playlist = Playlist(owner_id=user_id, name=body.name, is_public=body.is_public)
     session.add(playlist)
     await session.commit()
     return _summary(playlist, 0)
@@ -96,8 +129,11 @@ async def get_playlist(
     user_id: uuid.UUID = Depends(current_user_id),
     session: AsyncSession = Depends(get_session),
 ):
-    """La playlist con sus canciones en orden (status dice si se puede reproducir)."""
-    playlist = await _own_playlist(playlist_id, user_id, session)
+    """La playlist con sus canciones en orden (status dice si se puede reproducir).
+
+    is_owner dice si quien pide puede editarla; owner_name es el nombre de quien la armó."""
+    playlist = await _visible_playlist(playlist_id, user_id, session)
+    owner_name = await session.scalar(select(Artist.display_name).where(Artist.id == playlist.owner_id))
     result = await session.execute(
         select(Song, Artist.display_name)
         .join(PlaylistSong, PlaylistSong.song_id == Song.id)
@@ -108,6 +144,9 @@ async def get_playlist(
     return {
         "id": str(playlist.id),
         "name": playlist.name,
+        "is_public": playlist.is_public,
+        "is_owner": playlist.owner_id == user_id,
+        "owner_name": owner_name,
         "songs": [
             {
                 "id": str(s.id),
@@ -122,16 +161,19 @@ async def get_playlist(
 
 
 @router.patch("/{playlist_id}")
-async def rename_playlist(
+async def update_playlist(
     playlist_id: uuid.UUID,
-    body: PlaylistName,
+    body: PlaylistUpdate,
     user_id: uuid.UUID = Depends(current_user_id),
     session: AsyncSession = Depends(get_session),
 ):
     playlist = await _own_playlist(playlist_id, user_id, session)
-    playlist.name = body.name
+    if body.name is not None:
+        playlist.name = body.name
+    if body.is_public is not None:
+        playlist.is_public = body.is_public
     await session.commit()
-    return {"id": str(playlist.id), "name": playlist.name}
+    return {"id": str(playlist.id), "name": playlist.name, "is_public": playlist.is_public}
 
 
 @router.delete("/{playlist_id}", status_code=204)

@@ -22,42 +22,55 @@ export default function Metrics() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
 
-    const pollTimer = useRef(null);
     const knownIds = useRef(new Set());
 
-    async function loadCatalog() {
-        const { data } = await api.get("/catalog/songs");
-        knownIds.current = new Set(data.map((song) => song.id));
-        setSongsById(Object.fromEntries(data.map((song) => [song.id, song])));
-    }
-
-    async function loadMetrics() {
-        clearTimeout(pollTimer.current);
-        try {
-            const [plays, ranking] = await Promise.all([
-                api.get("/metrics/plays"),
-                api.get("/metrics/top", { params: { limit: TOP_LIMIT } })
-            ]);
-            setTotal(plays.data.plays);
-            setTop(ranking.data.songs);
-            setUpdatedAt(new Date());
-            setError("");
-
-            // Si entró al top una canción que todavía no conocemos, se recarga el catálogo.
-            if (ranking.data.songs.some((s) => !knownIds.current.has(s.song_id))) {
-                await loadCatalog().catch(() => {});
-            }
-        } catch (err) {
-            setError(errorMessage(err, "No se pudieron cargar las métricas."));
-        } finally {
-            setLoading(false);
-            pollTimer.current = setTimeout(loadMetrics, POLL_MS);
-        }
-    }
-
     useEffect(() => {
+        // Propios de esta montura: si la página se cierra con un pedido en vuelo,
+        // la respuesta se descarta y no se agenda otra vuelta del polling.
+        let alive = true;
+        let timer = null;
+
+        async function loadCatalog() {
+            const { data } = await api.get("/catalog/songs");
+            if (!alive) return;
+            knownIds.current = new Set(data.map((song) => song.id));
+            setSongsById(Object.fromEntries(data.map((song) => [song.id, song])));
+        }
+
+        async function loadMetrics() {
+            try {
+                const [plays, ranking] = await Promise.all([
+                    api.get("/metrics/plays"),
+                    api.get("/metrics/top", { params: { limit: TOP_LIMIT } })
+                ]);
+                if (!alive) return;
+                setTotal(plays.data.plays);
+                setTop(ranking.data.songs);
+                setUpdatedAt(new Date());
+                setError("");
+
+                // Si entró al top una canción que todavía no conocemos, se recarga el catálogo.
+                const unknown = ranking.data.songs.filter((s) => !knownIds.current.has(s.song_id));
+                if (unknown.length > 0) {
+                    await loadCatalog().catch(() => {});
+                    // Las que siguen sin aparecer fueron borradas: no se recarga en cada vuelta.
+                    unknown.forEach((s) => knownIds.current.add(s.song_id));
+                }
+            } catch (err) {
+                if (alive) setError(errorMessage(err, "No se pudieron cargar las métricas."));
+            } finally {
+                if (alive) {
+                    setLoading(false);
+                    timer = setTimeout(loadMetrics, POLL_MS);
+                }
+            }
+        }
+
         loadCatalog().catch(() => {}).finally(loadMetrics);
-        return () => clearTimeout(pollTimer.current);
+        return () => {
+            alive = false;
+            clearTimeout(timer);
+        };
     }, []);
 
     const maxPlays = top[0]?.total_plays || 1;

@@ -5,7 +5,7 @@ import uuid
 from contextlib import asynccontextmanager, suppress
 
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Response, UploadFile
-from sqlalchemy import select
+from sqlalchemy import inspect, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import consumer, minio_client, playlists, publisher
@@ -15,11 +15,19 @@ from .database import Base, engine, get_session
 from .models import Artist, Song, SongStatus
 
 
+def add_missing_columns(conn) -> None:
+    """create_all no agrega columnas a tablas que ya existen: las nuevas van acá."""
+    columns = {c["name"] for c in inspect(conn).get_columns("playlists")}
+    if "is_public" not in columns:
+        conn.execute(text("ALTER TABLE playlists ADD COLUMN is_public BOOLEAN NOT NULL DEFAULT FALSE"))
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Al arrancar: tablas, bucket y conexión a RabbitMQ
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(add_missing_columns)
     minio_client.ensure_bucket()
     await publisher.connect()
     consumer_conn, consumer_task = await consumer.start()
@@ -184,6 +192,7 @@ async def my_songs(
 async def delete_song(
     song_id: uuid.UUID,
     artist_id: uuid.UUID = Depends(current_user_id),
+    x_correlation_id: str | None = Header(default=None),
     session: AsyncSession = Depends(get_session),
 ):
     # Serializa el borrado con el consumidor mientras se limpia MinIO.
@@ -197,8 +206,26 @@ async def delete_song(
     except Exception:
         logging.exception("No se pudieron borrar los archivos de %s", song_id)
         raise HTTPException(503, "No se pudieron borrar los archivos de la canción")
+    title = song.title
     await session.delete(song)
     await session.commit()
+
+    # Avisa (hoy a métricas) que la canción ya no existe. El borrado ya está
+    # hecho: si RabbitMQ no responde se registra el error, pero no se deshace.
+    try:
+        await publisher.publish(
+            "song.deleted.v1",
+            data={
+                "song_id": str(song_id),
+                "artist_id": str(artist_id),
+                "deleted_by": str(artist_id),
+                "title": title,
+            },
+            subject=f"song/{song_id}",
+            correlation_id=x_correlation_id or f"req-{uuid.uuid4().hex[:8]}",
+        )
+    except Exception:
+        logging.exception("Canción %s borrada, pero no se pudo publicar song.deleted.v1", song_id)
     return Response(status_code=204)
 
 

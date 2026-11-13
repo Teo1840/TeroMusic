@@ -13,12 +13,9 @@ import aio_pika
 from . import minio_client, publisher
 from .audio_processor import ProcessingError, process_audio
 from .config import settings
+from .processed import registry
 
 log = logging.getLogger("worker")
-
-# Idempotencia básica: ids de eventos ya procesados (se pierde al reiniciar,
-# pero reprocesar es seguro porque los archivos se sobrescriben).
-_processed_ids: set[str] = set()
 
 
 async def process_song(data: dict) -> dict:
@@ -96,7 +93,7 @@ async def on_message(message: aio_pika.abc.AbstractIncomingMessage) -> None:
         await message.reject(requeue=False)
         return
 
-    if event_id in _processed_ids:
+    if await registry.seen(event_id):
         log.info("Evento %s ya procesado, se ignora", event_id)
         await message.ack()
         return
@@ -114,7 +111,7 @@ async def on_message(message: aio_pika.abc.AbstractIncomingMessage) -> None:
         await message.nack(requeue=True)
         return
 
-    _processed_ids.add(event_id)
+    await registry.mark(event_id)
     await message.ack()
 
 

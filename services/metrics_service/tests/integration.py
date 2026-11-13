@@ -27,6 +27,7 @@ async def main():
         host=os.getenv("RABBITMQ_HOST", "rabbitmq"),
         login=os.environ["RABBITMQ_USER"], password=os.environ["RABBITMQ_PASS"],
     )
+    domain_ids = []
     try:
         assert get_metrics(song_id) == {"song_id": song_id, "total_plays": 0}
         plays_before = get_json("/metrics/plays")["plays"]
@@ -88,11 +89,33 @@ async def main():
             for message in unrelated:
                 await message.nack(requeue=True)
         assert get_metrics(song_id)["total_plays"] == 10
-        print("PASS: zero plays, total plays, top songs, AMQP -> PostgreSQL -> REST, concurrency, deduplication, CloudEvents validation, invalid events")
+
+        # Usuarios registrados y salas creadas: se cuentan una vez cada uno, aunque llegue repetido.
+        before = get_json("/metrics/summary")
+        for kind in ("user.registered.v1", "room.created.v1"):
+            other = json.loads(Path(f"contracts/examples/{kind}.example.json").read_text())
+            other["id"] = str(uuid4())
+            key = "user_id" if kind == "user.registered.v1" else "room_id"
+            other["data"][key] = str(uuid4())
+            domain_ids.append(other["id"])
+            for _ in range(2):
+                await exchange.publish(aio_pika.Message(
+                    body=json.dumps(other).encode(), content_type="application/json",
+                    delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
+                ), routing_key=kind)
+        for _ in range(100):
+            await asyncio.sleep(0.1)
+            after = get_json("/metrics/summary")
+            if after["users"] >= before["users"] + 1 and after["rooms"] >= before["rooms"] + 1:
+                break
+        assert after["users"] == before["users"] + 1, (before, after)
+        assert after["rooms"] == before["rooms"] + 1, (before, after)
+        print("PASS: zero plays, total plays, top songs, AMQP -> PostgreSQL -> REST, concurrency, deduplication, CloudEvents validation, invalid events, users and rooms summary")
     finally:
         await broker.close()
         await pool.execute("DELETE FROM analytics.play_events WHERE song_id=$1", song_id)
         await pool.execute("DELETE FROM analytics.song_metrics WHERE song_id=$1", song_id)
+        await pool.execute("DELETE FROM analytics.domain_events WHERE event_id=ANY($1::varchar[])", domain_ids)
         await pool.close()
 
 

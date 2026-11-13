@@ -34,6 +34,8 @@ export function initials(name) {
 
 /** Fecha ISO → "noviembre de 2026". "" si no es una fecha válida. */
 export function formatMonthYear(iso) {
+    // Sin el chequeo, new Date(null) es 1970 y se mostraría "diciembre de 1969".
+    if (!iso) return "";
     const date = new Date(iso);
     if (Number.isNaN(date.getTime())) return "";
     return new Intl.DateTimeFormat("es", { month: "long", year: "numeric" }).format(date);
@@ -41,6 +43,7 @@ export function formatMonthYear(iso) {
 
 /** Fecha ISO → "13 de noviembre de 2026". "" si no es una fecha válida. */
 export function formatDate(iso) {
+    if (!iso) return "";
     const date = new Date(iso);
     if (Number.isNaN(date.getTime())) return "";
     return new Intl.DateTimeFormat("es", { day: "numeric", month: "long", year: "numeric" }).format(date);

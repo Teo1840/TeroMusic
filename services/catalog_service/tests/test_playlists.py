@@ -159,7 +159,7 @@ def test_playlist_inexistente_404(client):
     assert client.delete(f"/playlists/{missing}", headers=AUTH).status_code == 404
 
 
-def test_playlist_de_otro_usuario_403(client, songs):
+def test_playlist_privada_de_otro_usuario_403(client, songs):
     playlist_id = create(client).json()["id"]
 
     assert client.get(f"/playlists/{playlist_id}", headers=OTHER).status_code == 403
@@ -168,3 +168,69 @@ def test_playlist_de_otro_usuario_403(client, songs):
     assert add(client, playlist_id, songs["a"], headers=OTHER).status_code == 403
     assert client.put(f"/playlists/{playlist_id}/songs", json={"song_ids": []}, headers=OTHER).status_code == 403
     assert client.delete(f"/playlists/{playlist_id}/songs/{songs['a']}", headers=OTHER).status_code == 403
+
+
+def test_nueva_es_privada(client):
+    playlist = create(client).json()
+    assert playlist["is_public"] is False
+    detail = client.get(f"/playlists/{playlist['id']}", headers=AUTH).json()
+    assert detail["is_public"] is False
+    assert detail["is_owner"] is True
+
+
+def test_compartida_la_ve_otro_pero_no_la_edita(client, songs):
+    playlist_id = create(client).json()["id"]
+    add(client, playlist_id, songs["a"])
+
+    response = client.patch(f"/playlists/{playlist_id}", json={"is_public": True}, headers=AUTH)
+    assert response.json() == {"id": playlist_id, "name": "Para correr", "is_public": True}
+    assert client.get("/playlists", headers=AUTH).json()[0]["is_public"] is True
+
+    detail = client.get(f"/playlists/{playlist_id}", headers=OTHER)
+    assert detail.status_code == 200
+    assert detail.json()["is_owner"] is False
+    assert [s["title"] for s in detail.json()["songs"]] == ["Tema a"]
+
+    # Ver no es editar.
+    assert client.patch(f"/playlists/{playlist_id}", json={"name": "x"}, headers=OTHER).status_code == 403
+    assert client.patch(f"/playlists/{playlist_id}", json={"is_public": False}, headers=OTHER).status_code == 403
+    assert add(client, playlist_id, songs["b"], headers=OTHER).status_code == 403
+    assert client.delete(f"/playlists/{playlist_id}/songs/{songs['a']}", headers=OTHER).status_code == 403
+    assert client.delete(f"/playlists/{playlist_id}", headers=OTHER).status_code == 403
+    # Y no aparece en el listado del otro.
+    assert client.get("/playlists", headers=OTHER).json() == []
+
+
+def test_dejar_de_compartir(client):
+    playlist_id = create(client).json()["id"]
+    client.patch(f"/playlists/{playlist_id}", json={"is_public": True}, headers=AUTH)
+    client.patch(f"/playlists/{playlist_id}", json={"is_public": False}, headers=AUTH)
+    assert client.get(f"/playlists/{playlist_id}", headers=OTHER).status_code == 403
+
+
+def test_crear_ya_compartida(client):
+    playlist = client.post("/playlists", json={"name": "Disco", "is_public": True}, headers=AUTH).json()
+    assert playlist["is_public"] is True
+
+
+def test_patch_solo_nombre_no_toca_la_visibilidad(client):
+    playlist_id = create(client).json()["id"]
+    client.patch(f"/playlists/{playlist_id}", json={"is_public": True}, headers=AUTH)
+    response = client.patch(f"/playlists/{playlist_id}", json={"name": "Domingo"}, headers=AUTH)
+    assert response.json()["is_public"] is True
+    assert client.patch(f"/playlists/{playlist_id}", json={"name": "  "}, headers=AUTH).status_code == 422
+
+
+def test_agrega_la_columna_a_una_tabla_vieja():
+    """Una base creada antes de is_public: al arrancar se agrega la columna, privada."""
+    from sqlalchemy import create_engine, text
+
+    from app.main import add_missing_columns
+
+    engine = create_engine("sqlite://")
+    with engine.begin() as conn:
+        conn.execute(text("CREATE TABLE playlists (id VARCHAR PRIMARY KEY, owner_id VARCHAR, name VARCHAR)"))
+        conn.execute(text("INSERT INTO playlists VALUES ('p', 'u', 'Vieja')"))
+        add_missing_columns(conn)
+        add_missing_columns(conn)  # la segunda vez no hace nada
+        assert conn.execute(text("SELECT is_public FROM playlists")).scalar() in (0, False)

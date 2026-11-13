@@ -9,3 +9,6 @@ minio_data/
 .venv/
 dist/
 .DS_Store
+
+# Credenciales de prueba locales
+usuarios-artistas.txt

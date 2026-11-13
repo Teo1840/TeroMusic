@@ -4,7 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import api from "../api/client";
 import Profile from "./Profile";
 
-vi.mock("../api/client", () => ({ default: { get: vi.fn(), patch: vi.fn() } }));
+vi.mock("../api/client", () => ({ default: { get: vi.fn(), patch: vi.fn(), post: vi.fn() } }));
 
 const me = {
     id: "u1",
@@ -24,17 +24,17 @@ const songs = [
 
 const PLAYS = { s1: 12, s2: 3 };
 
-function mockApi({ mine = songs, metricsFail = false } = {}) {
+function mockApi({ mine = songs, metricsFail = false, plays = PLAYS } = {}) {
     api.get.mockImplementation(async (url) => {
         if (url === "/auth/me") return { data: me };
         if (url === "/catalog/songs/mine") return { data: mine };
         if (url === "/catalog/playlists") return { data: [{ id: "p1" }, { id: "p2" }] };
-        const m = url.match(/^\/metrics\/songs\/(.+)$/);
-        if (m) {
-            if (metricsFail) throw new Error("metrics caído");
-            return { data: { song_id: m[1], total_plays: PLAYS[m[1]] ?? 0 } };
-        }
         throw new Error(`URL inesperada: ${url}`);
+    });
+    api.post.mockImplementation(async (url, body) => {
+        if (url !== "/metrics/songs/batch") throw new Error(`URL inesperada: ${url}`);
+        if (metricsFail) throw new Error("metrics caído");
+        return { data: { songs: body.song_ids.map((id) => ({ song_id: id, total_plays: plays[id] ?? 0 })) } };
     });
 }
 
@@ -70,8 +70,19 @@ describe("perfil", () => {
         expect(within(stat("Playlists")).getByText("2")).toBeTruthy();
         expect(within(stat("Más escuchada")).getByText("Hit")).toBeTruthy();
         expect(within(stat("Más escuchada")).getByText("12 reproducciones")).toBeTruthy();
-        // Solo pide métricas de las publicadas.
-        expect(api.get).not.toHaveBeenCalledWith("/metrics/songs/s3");
+        // Un solo pedido a metrics, solo con las publicadas.
+        expect(api.post).toHaveBeenCalledTimes(1);
+        expect(api.post).toHaveBeenCalledWith("/metrics/songs/batch", { song_ids: ["s1", "s2"] });
+    });
+
+    it("con más de 500 canciones parte el pedido y suma todo", async () => {
+        const many = Array.from({ length: 1201 }, (_, i) => ({ id: `m${i}`, title: `T${i}`, status: "PUBLICADO" }));
+        mockApi({ mine: many, plays: { m0: 1, m700: 5, m1200: 2 } });
+        renderProfile();
+
+        await vi.waitFor(() => expect(within(stat("Reproducciones")).getByText("8")).toBeTruthy());
+        expect(within(stat("Más escuchada")).getByText("T700")).toBeTruthy();
+        expect(api.post.mock.calls.map(([, body]) => body.song_ids.length)).toEqual([500, 500, 201]);
     });
 
     it("si metrics no responde, el resto se ve igual", async () => {
@@ -80,6 +91,45 @@ describe("perfil", () => {
         await screen.findByRole("heading", { level: 1, name: "Ana López" });
         await vi.waitFor(() => expect(within(stat("Reproducciones")).getByText("–")).toBeTruthy());
         expect(within(stat("Canciones publicadas")).getByText("2")).toBeTruthy();
+    });
+
+    it("si fallan las playlists o mis canciones, cada bloque muestra – por separado", async () => {
+        mockApi();
+        const base = api.get.getMockImplementation();
+        api.get.mockImplementation(async (url) => {
+            if (url === "/catalog/playlists" || url === "/catalog/songs/mine") throw new Error("caído");
+            return base(url);
+        });
+        renderProfile();
+        await screen.findByRole("heading", { level: 1, name: "Ana López" });
+        await vi.waitFor(() => expect(within(stat("Playlists")).getByText("–")).toBeTruthy());
+        expect(within(stat("Canciones publicadas")).getByText("–")).toBeTruthy();
+        expect(within(stat("Reproducciones")).getByText("–")).toBeTruthy();
+        expect(screen.queryByRole("alert")).toBeNull();
+    });
+
+    it("si falla /auth/me muestra el error", async () => {
+        mockApi();
+        const base = api.get.getMockImplementation();
+        api.get.mockImplementation(async (url) => {
+            if (url === "/auth/me") throw new Error("caído");
+            return base(url);
+        });
+        renderProfile();
+        expect((await screen.findByRole("alert")).textContent).toBe("No se pudo cargar tu perfil.");
+    });
+
+    it("si falla guardar el nombre muestra el error y no cambia la cabecera", async () => {
+        mockApi();
+        api.patch.mockRejectedValue(new Error("caído"));
+        renderProfile();
+        const input = await screen.findByLabelText("Nombre de artista");
+
+        fireEvent.change(input, { target: { value: "Ana Nueva" } });
+        fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+
+        expect(await screen.findByRole("alert")).toBeTruthy();
+        expect(screen.getByRole("heading", { level: 1, name: "Ana López" })).toBeTruthy();
     });
 
     it("sin canciones invita a subir la primera", async () => {

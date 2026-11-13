@@ -94,7 +94,7 @@ export default function MySongs() {
     }
 
     return (
-        <div className="page">
+        <div className="page max-w-3xl">
 
             <div className="flex flex-wrap items-center justify-between gap-2 mb-6">
                 <h1 className="page-title">Mis canciones</h1>
@@ -126,7 +126,7 @@ export default function MySongs() {
                     onChange={(e) => setQuery(e.target.value)}
                     placeholder="Buscar por nombre..."
                     aria-label="Buscar entre tus canciones"
-                    className="field max-w-md mb-6"
+                    className="field mb-6"
                 />
             )}
 
@@ -134,7 +134,7 @@ export default function MySongs() {
                 <p className="muted">Ninguna canción coincide con "{query.trim()}".</p>
             )}
 
-            <ul className="space-y-4 max-w-3xl">
+            <ul className="space-y-4">
                 {visibleSongs.map((song) => {
                     const busy = deletingId === song.id;
                     return (
@@ -153,7 +153,7 @@ export default function MySongs() {
                                 </div>
 
                                 {confirmId === song.id ? (
-                                    <div className="flex items-center gap-2" role="group" aria-label={`Confirmar borrado de ${song.title}`}>
+                                    <div className="flex flex-wrap items-center gap-2" role="group" aria-label={`Confirmar borrado de ${song.title}`}>
                                         <span className="text-sm">¿Borrar?</span>
                                         <button
                                             type="button"

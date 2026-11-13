@@ -6,12 +6,27 @@
  */
 
 @layer base {
+    /* Reserva siempre el lugar de la barra de scroll: si no, al pasar de una página
+       corta a una larga aparece la barra y todo el contenido centrado salta de costado. */
+    html {
+        scrollbar-gutter: stable;
+    }
+
     body {
         @apply bg-white text-black antialiased;
     }
 
     button:not(:disabled) {
         cursor: pointer;
+    }
+
+    /* En el celular, iOS hace zoom al tocar un campo con letra de menos de 16px. */
+    @media (max-width: 639px) {
+        input:not([type="range"]):not([type="radio"]):not([type="checkbox"]),
+        select,
+        textarea {
+            font-size: 16px;
+        }
     }
 }
 
@@ -58,8 +73,10 @@
         @apply text-gray-600;
     }
 
+    /* Contenedor de cada pantalla: centrado y con ancho máximo en laptop.
+       Una pantalla puede achicarlo con max-w-3xl, etc. (sigue centrada). */
     .page {
-        @apply p-4 sm:p-8;
+        @apply mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8;
     }
 
     .page-title {

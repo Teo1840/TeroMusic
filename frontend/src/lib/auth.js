@@ -27,6 +27,12 @@ function tokenPayload(token) {
     }
 }
 
+/** Id del usuario logueado (el "sub" del JWT), o null si no hay sesión. */
+export function currentUserId() {
+    const token = getToken();
+    return (token && tokenPayload(token)?.sub) || null;
+}
+
 /** Hay un token y no venció. La firma la verifica el gateway, no el navegador. */
 export function hasValidToken() {
     const token = getToken();
