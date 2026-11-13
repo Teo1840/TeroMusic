@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import api from "../api/client";
 import AudioPlayer from "../components/AudioPlayer";
+import AddToPlaylist from "../components/AddToPlaylist";
 import { artistLabel, errorMessage, filterByTitle } from "../lib/format";
 
 export default function Catalog() {
@@ -67,6 +68,7 @@ export default function Catalog() {
                             <h2 className="font-semibold break-words">{song.title}</h2>
                             <p className="text-sm muted break-words">{artistLabel(song)}</p>
                             <AudioPlayer songId={song.id} />
+                            <AddToPlaylist song={song} />
                         </article>
                     ))}
                 </div>

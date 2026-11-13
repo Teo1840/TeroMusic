@@ -17,6 +17,8 @@ API en http://localhost:8000/docs. Desde el front, todo pasa por el gateway: `/a
 |---|---|---|
 | `POST` | `/songs/upload` | Sube una canción (`title` + `file`, formulario multipart). Responde `202` con `song_id` |
 | `GET` | `/songs` | Lista las canciones **publicadas**, con `artist_name` |
+| `GET` | `/songs/mine` | Canciones del usuario autenticado en cualquier estado, con errores y duración |
+| `DELETE` | `/songs/{song_id}` | Borra una canción propia y sus archivos. `204`, `403` si es ajena, `404` si no existe |
 | `GET` | `/songs/{song_id}` | Estado de una canción (sirve para saber si el worker ya terminó) |
 | `GET` | `/playlists` | Playlists del usuario: `[{id, name, song_count}]` |
 | `POST` | `/playlists` | Crea una (`{name}`, hasta 100 caracteres). `201` |
@@ -60,6 +62,11 @@ API en http://localhost:8000/docs. Desde el front, todo pasa por el gateway: `/a
 Cada evento se procesa una sola vez (se guarda su `id`). Un fallo que llega tarde no
 despublica una canción que ya estaba lista.
 
+El borrado elimina el original y toda la carpeta procesada (versiones, waveform y
+archivos parciales). Si MinIO falla, responde `503` y conserva la canción para
+reintentar. Si el worker termina después del borrado, el consumidor limpia sus
+archivos tardíos; los fallos de esa limpieza se reintentan por RabbitMQ.
+
 ## Artistas
 
 La misma cola recibe `user.registered.v1` y `user.profile_updated.v1` y guarda el nombre
@@ -74,12 +81,14 @@ no llegó, `artist_name` es `null`. Un `user.profile_updated.v1` más viejo que 
 
 ## Tests
 
-37 tests con pytest. No necesitan Postgres, MinIO ni RabbitMQ: la base es SQLite en
+Tests con pytest. No necesitan Postgres, MinIO ni RabbitMQ: la base es SQLite en
 memoria y MinIO y RabbitMQ están simulados ([tests/conftest.py](tests/conftest.py)).
 
 - `tests/test_upload.py`: subida (202, BORRADOR, evento `audio.uploaded.v1` con sus datos,
   `.wav` y `.mp3`), el artista sale de `X-User-Id`, errores 400 / 401 / 413 / 503, y que
   `GET /songs` liste solo las PUBLICADO.
+- `tests/test_my_songs.py`: listado propio, autenticación, borrado en todos los estados,
+  permisos, reintentos ante fallos de MinIO y limpieza completa de archivos.
 - `tests/test_consumer.py`: `audio.ready` publica y `audio.failed` marca FALLIDO, un fallo
   tardío no despublica, el mismo evento dos veces se aplica una sola vez, los mensajes
   inválidos van a dead-letter y, si la base falla, el mensaje vuelve a la cola.

@@ -18,7 +18,9 @@ Es el único puerto que se abre: el resto de los servicios sigue accesible solo 
 | Ruta | Qué hay |
 |---|---|
 | `/login`, `/register` | Entrar y crear cuenta (al registrarse se entra directo). El registro pide un nombre de artista opcional |
-| `/catalog` | Canciones publicadas con su artista, buscador (por título o artista) y reproductor con forma de onda |
+| `/catalog` | Canciones publicadas con su artista, buscador (por título o artista), reproductor con forma de onda y selector para agregar a una playlist propia |
+| `/playlists` | Crear, buscar y borrar playlists propias |
+| `/playlists/:playlistId` | Editar y reordenar canciones, reproducir la playlist completa |
 | `/upload` | Subida de canciones (`.wav` o `.mp3`). El título se completa solo con el nombre del archivo y se avisa cuando queda publicada |
 | `/my-songs` | Canciones que subió el usuario, en cualquier estado, con opción de borrar. Espera `GET /songs/mine` y `DELETE /songs/{id}` del catálogo, que todavía no existen: hasta entonces muestra "todavía no disponible" |
 | `/playlists` | Playlists del usuario: crear, buscar y borrar |
@@ -43,6 +45,26 @@ Todas, salvo login y registro, piden haber iniciado sesión.
   firmada del stream, la forma de onda y la metadata del audio. Para no mandar esos pedidos de
   todas las canciones juntas (el gateway corta con `429` si se pasan del límite), se arma recién
   cuando su tarjeta se acerca a la pantalla.
+
+## Reproducción de playlists
+
+En una playlist, **Reproducir playlist** comienza desde la primera canción publicada.
+También se puede tocar el título de una canción para empezar desde ahí. Al terminar,
+avanza según el orden actual, omite las no disponibles y se detiene al llegar al final.
+El reproductor permite pausar, ir a anterior/siguiente y detener la cola. La cola se
+detiene al salir de la pantalla o sacar la canción actual. Si el navegador bloquea
+el inicio automático, se muestra un aviso para continuar con el botón Reproducir.
+
+Desde el Catálogo, **Agregar a playlist** carga las playlists propias al abrir el
+selector. Permite elegir una, confirma el agregado y avisa si ya contiene la canción.
+Si no hay playlists, ofrece un enlace para crear una.
+
+## Tests
+
+`npm test` verifica el avance de la cola, los controles, los cambios de orden,
+el borrado de la canción actual, el inicio automático y el agregado desde Catálogo
+(incluyendo duplicados, playlists vacías y errores de red). `npm run build` compila
+la aplicación para producción.
 
 ## Estilo
 

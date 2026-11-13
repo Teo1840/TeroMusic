@@ -49,14 +49,18 @@ export default function Playlist() {
     const [editingName, setEditingName] = useState(false);
     const [nameDraft, setNameDraft] = useState("");
 
-    const [playingId, setPlayingId] = useState(null);  // canción con el reproductor abierto
+    const [playingId, setPlayingId] = useState(null);  // canción actual de la cola personal
+    const [playSession, setPlaySession] = useState(0);
+    const [reordering, setReordering] = useState(false);
 
-    async function loadPlaylist() {
+    async function loadPlaylist(isCancelled) {
         try {
             const { data } = await api.get(`/catalog/playlists/${playlistId}`);
+            if (isCancelled()) return;
             setPlaylist({ ...data, songs: data.songs ?? [] });
             setError("");
         } catch (err) {
+            if (isCancelled()) return;
             const status = err?.response?.status;
             if (status === 404 || status === 405) {
                 setError("Esta playlist no existe o las playlists todavía no están disponibles.");
@@ -66,24 +70,49 @@ export default function Playlist() {
                 setError(errorMessage(err, "No se pudo cargar la playlist."));
             }
         } finally {
-            setLoading(false);
+            if (!isCancelled()) setLoading(false);
         }
     }
 
     useEffect(() => {
+        let cancelled = false;
         setLoading(true);
-        loadPlaylist();
+        setPlayingId(null);
+        setPlaylist(null);
+        setNotice("");
+        setError("");
+        setEditingName(false);
+        loadPlaylist(() => cancelled);
         // El catálogo es para el buscador de "Agregar canción": si falla, solo no se puede agregar.
         api.get("/catalog/songs")
-            .then(({ data }) => setCatalog(data))
-            .catch(() => setCatalog([]));
+            .then(({ data }) => { if (!cancelled) setCatalog(data); })
+            .catch(() => { if (!cancelled) setCatalog([]); });
+        return () => { cancelled = true; };
     }, [playlistId]);
 
     const songs = playlist?.songs ?? [];
     const inPlaylist = new Set(songs.map((s) => s.id));
     const addable = catalog.filter((s) => !inPlaylist.has(s.id));
+    const playable = songs.filter((song) => (song.status ?? "PUBLICADO") === "PUBLICADO");
+    const currentSong = playable.find((song) => song.id === playingId);
+    const currentIndex = playable.findIndex((song) => song.id === playingId);
+
+    function playSong(song) {
+        setPlayingId(song.id);
+        setPlaySession((session) => session + 1);
+    }
+
+    function playNext() {
+        const next = playable[currentIndex + 1];
+        if (next) playSong(next);
+        else {
+            setPlayingId(null);
+            setNotice("Terminó la playlist.");
+        }
+    }
 
     async function addSong(song) {
+        if (saving || reordering) return;
         setNotice("");
         setSaving(true);
         try {
@@ -114,6 +143,7 @@ export default function Playlist() {
         } catch (err) {
             if (err?.response?.status === 404) {
                 setPlaylist((prev) => ({ ...prev, songs: prev.songs.filter((s) => s.id !== song.id) }));
+                if (playingId === song.id) setPlayingId(null);
             } else {
                 setNotice(errorMessage(err, "No se pudo sacar la canción."));
             }
@@ -124,18 +154,22 @@ export default function Playlist() {
 
     // Se mueve en pantalla al instante; si el servidor rechaza el orden nuevo, se vuelve al anterior.
     async function moveSong(index, toIndex) {
+        if (saving || reordering) return;
         const previous = songs;
         const reordered = [...songs];
         const [moved] = reordered.splice(index, 1);
         reordered.splice(toIndex, 0, moved);
 
         setNotice("");
+        setReordering(true);
         setPlaylist((prev) => ({ ...prev, songs: reordered }));
         try {
             await api.put(`/catalog/playlists/${playlistId}/songs`, { song_ids: reordered.map((s) => s.id) });
         } catch (err) {
             setPlaylist((prev) => ({ ...prev, songs: previous }));
             setNotice(errorMessage(err, "No se pudo cambiar el orden."));
+        } finally {
+            setReordering(false);
         }
     }
 
@@ -214,6 +248,27 @@ export default function Playlist() {
                         {totalSeconds > 0 && ` · ${formatTime(totalSeconds)}`}
                     </p>
 
+                    <div className="mb-6">
+                        <button type="button" className="btn-primary" disabled={playable.length === 0}
+                            onClick={() => { setNotice(""); playSong(playable[0]); }}>
+                            Reproducir playlist
+                        </button>
+                        {currentSong && (
+                            <section className="card mt-3" aria-label="Reproductor de playlist">
+                                <p className="font-semibold" aria-live="polite">{currentSong.title}</p>
+                                <p className="muted text-sm">Canción {currentIndex + 1} de {playable.length}</p>
+                                <AudioPlayer key={`${playingId}-${playSession}`} songId={playingId} autoPlay onEnded={playNext} />
+                                <div className="flex flex-wrap gap-2 mt-3">
+                                    <button type="button" className="btn py-1 text-sm" disabled={currentIndex <= 0}
+                                        onClick={() => playSong(playable[currentIndex - 1])}>Anterior</button>
+                                    <button type="button" className="btn py-1 text-sm" disabled={currentIndex >= playable.length - 1}
+                                        onClick={playNext}>Siguiente</button>
+                                    <button type="button" className="btn py-1 text-sm" onClick={() => setPlayingId(null)}>Detener</button>
+                                </div>
+                            </section>
+                        )}
+                    </div>
+
                     <div className="card mb-6">
                         <SongSearch
                             songs={addable}
@@ -240,9 +295,10 @@ export default function Playlist() {
                                         <span className="text-sm muted w-5 tabular-nums">{index + 1}</span>
                                         <button
                                             type="button"
-                                            onClick={() => setPlayingId(open ? null : song.id)}
+                                            onClick={() => playSong(song)}
                                             disabled={!available}
-                                            aria-expanded={open}
+                                            aria-current={open ? "true" : undefined}
+                                            aria-label={`Reproducir desde ${song.title}`}
                                             className="flex-1 min-w-0 text-left break-words hover:underline underline-offset-2 disabled:no-underline disabled:opacity-50"
                                         >
                                             {song.title}
@@ -252,17 +308,16 @@ export default function Playlist() {
                                         <span className="text-xs muted tabular-nums">
                                             {song.duration != null && formatTime(song.duration)}
                                         </span>
-                                        <IconButton label="Subir" disabled={index === 0} onClick={() => moveSong(index, index - 1)}>
+                                        <IconButton label="Subir" disabled={saving || reordering || index === 0} onClick={() => moveSong(index, index - 1)}>
                                             <ArrowUpIcon />
                                         </IconButton>
-                                        <IconButton label="Bajar" disabled={index === songs.length - 1} onClick={() => moveSong(index, index + 1)}>
+                                        <IconButton label="Bajar" disabled={saving || reordering || index === songs.length - 1} onClick={() => moveSong(index, index + 1)}>
                                             <ArrowDownIcon />
                                         </IconButton>
-                                        <IconButton label={`Sacar "${song.title}" de la playlist`} disabled={saving} onClick={() => removeSong(song)}>
+                                        <IconButton label={`Sacar "${song.title}" de la playlist`} disabled={saving || reordering} onClick={() => removeSong(song)}>
                                             <CloseIcon />
                                         </IconButton>
                                     </div>
-                                    {open && <AudioPlayer songId={song.id} />}
                                 </li>
                             );
                         })}

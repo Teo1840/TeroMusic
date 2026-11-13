@@ -117,7 +117,7 @@ function WaveformBar({ peaks, current, duration, onSeek }) {
  * varios pedidos (URL firmada, forma de onda, metadata del audio) y con un catálogo largo
  * pedirlos todos juntos supera el rate limit del gateway (429).
  */
-export default function AudioPlayer({ songId }) {
+export default function AudioPlayer({ songId, autoPlay = false, onEnded }) {
 
     const boxRef = useRef(null);
     const [visible, setVisible] = useState(typeof IntersectionObserver === "undefined");
@@ -137,13 +137,13 @@ export default function AudioPlayer({ songId }) {
         return () => observer.disconnect();
     }, [visible]);
 
-    if (!visible) {
+    if (!visible && !autoPlay) {
         return <div ref={boxRef} className="mt-2 h-16" aria-hidden="true" />;
     }
-    return <Player songId={songId} />;
+    return <Player key={songId} songId={songId} autoPlay={autoPlay} onEnded={onEnded} />;
 }
 
-function Player({ songId }) {
+function Player({ songId, autoPlay, onEnded }) {
 
     const audioRef = useRef(null);
     const { src, onError, onLoadedData } = useSignedStreamUrl(songId, audioRef);
@@ -155,6 +155,16 @@ function Player({ songId }) {
     const [duration, setDuration] = useState(0);
     const [volume, setVolume] = useState(savedVolume);
     const [muted, setMuted] = useState(false);
+    const [playNotice, setPlayNotice] = useState("");
+
+    useEffect(() => {
+        if (!autoPlay || !src || !audioRef.current) return;
+        let cancelled = false;
+        audioRef.current.play().catch(() => {
+            if (!cancelled) setPlayNotice("No se pudo iniciar el audio automáticamente. Tocá Reproducir para continuar.");
+        });
+        return () => { cancelled = true; };
+    }, [autoPlay, src]);
 
     useEffect(() => {
         if (!audioRef.current) return;
@@ -205,6 +215,7 @@ function Player({ songId }) {
                 onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
                 onDurationChange={(e) => setDuration(e.currentTarget.duration)}
                 onPlay={() => {
+                    setPlayNotice("");
                     tracking.onPlay();
                     setPlaying(true);
                     window.dispatchEvent(new CustomEvent(PLAY_EVENT, { detail: songId }));
@@ -218,8 +229,10 @@ function Player({ songId }) {
                 onEnded={() => {
                     tracking.onEnded();
                     setPlaying(false);
+                    onEnded?.();
                 }}
             />
+            {playNotice && <p className="text-sm muted" role="status">{playNotice}</p>}
 
             <div className="flex items-center gap-2">
                 <button

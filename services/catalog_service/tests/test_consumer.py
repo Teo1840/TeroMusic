@@ -147,8 +147,22 @@ def test_mensajes_invalidos_van_a_dead_letter(song_id):
     assert handle(event("audio.ready.v1", song_id, {"duration_sec": 1})) == descartado  # sin renditions
 
 
-def test_cancion_inexistente_va_a_dead_letter(client):
-    assert handle(event("audio.ready.v1", uuid.uuid4(), READY)) == "reject(requeue=False)"
+def test_cancion_inexistente_va_a_dead_letter(client, deleted_files):
+    song_id = uuid.uuid4()
+    assert handle(event("audio.ready.v1", song_id, READY)) == "reject(requeue=False)"
+    assert deleted_files == [song_id]
+
+
+def test_limpieza_tardia_fallida_reencola(client, monkeypatch):
+    async def fail(_):
+        raise ConnectionError("MinIO caído")
+
+    async def no_sleep(_):
+        pass
+
+    monkeypatch.setattr(consumer.minio_client, "delete_song_files", fail)
+    monkeypatch.setattr(consumer.asyncio, "sleep", no_sleep)
+    assert handle(event("audio.ready.v1", uuid.uuid4(), READY)) == "nack(requeue=True)"
 
 
 def test_si_la_base_falla_el_mensaje_vuelve_a_la_cola(client, monkeypatch):

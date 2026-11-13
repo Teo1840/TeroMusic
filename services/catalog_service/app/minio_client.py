@@ -27,3 +27,18 @@ def _put(key: str, fileobj, size: int, content_type: str) -> None:
 async def upload_fileobj(key: str, fileobj, size: int, content_type: str):
     # El SDK de MinIO es síncrono: lo corremos en un hilo para no bloquear FastAPI.
     await asyncio.to_thread(_put, key, fileobj, size, content_type)
+
+
+def _delete_song_files(song_id) -> None:
+    # El original ya no figura en file_uri cuando la canción está publicada.
+    for ext in (".wav", ".mp3"):
+        client.remove_object(settings.minio_bucket, f"{settings.raw_prefix}{song_id}{ext}")
+    # Incluye todas las versiones, waveform y salidas parciales de un fallo.
+    prefix = f"{settings.processed_prefix}{song_id}/"
+    for obj in client.list_objects(settings.minio_bucket, prefix=prefix, recursive=True):
+        client.remove_object(settings.minio_bucket, obj.object_name)
+
+
+async def delete_song_files(song_id) -> None:
+    """Borrado idempotente; propaga fallos de almacenamiento para permitir reintentos."""
+    await asyncio.to_thread(_delete_song_files, song_id)
