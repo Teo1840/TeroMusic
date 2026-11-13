@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, DateTime, Enum, Float, ForeignKey, Integer, String
+from sqlalchemy import JSON, Boolean, DateTime, Enum, Float, ForeignKey, Integer, String, false
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .database import Base
@@ -44,13 +44,17 @@ class ProcessedEvent(Base):
 
 
 class Playlist(Base):
-    """Lista de canciones de un usuario."""
+    """Lista de canciones de un usuario.
+
+    Privada por defecto. Si is_public, cualquiera con el link (y sesión iniciada) puede
+    verla y escucharla; editarla sigue siendo solo del dueño."""
 
     __tablename__ = "playlists"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     owner_id: Mapped[uuid.UUID] = mapped_column(index=True)
     name: Mapped[str] = mapped_column(String(100))
+    is_public: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

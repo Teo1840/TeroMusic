@@ -5,6 +5,7 @@ from uuid import UUID, uuid4
 from jsonschema.exceptions import ValidationError
 from app.events import CONTRACTS, TYPES, parse_event
 from app.database import SCHEMA, open_pool, record_event
+from fastapi import HTTPException
 from app.main import app, user_notifications
 
 
@@ -57,11 +58,16 @@ class PersistenceTest(unittest.IsolatedAsyncioTestCase):
         event["data"]["user_id"] = str(user)
         await self.save(event)
         await self.save(event)
-        rows = await user_notifications(user, 50, 0)
+        rows = await user_notifications(user, 50, 0, None)
         self.assertEqual(len(rows), 1)
         self.assertIn("Bienvenido", rows[0]["message"])
-        self.assertEqual(await user_notifications(uuid4(), 50, 0), [])
-        self.assertEqual(await user_notifications(user, 50, 1), [])
+        self.assertEqual(await user_notifications(uuid4(), 50, 0, None), [])
+        self.assertEqual(await user_notifications(user, 50, 1, None), [])
+        # Con el header del gateway: el propio usuario lee, otro recibe 403.
+        self.assertEqual(len(await user_notifications(user, 50, 0, user)), 1)
+        with self.assertRaises(HTTPException) as denied:
+            await user_notifications(user, 50, 0, uuid4())
+        self.assertEqual(denied.exception.status_code, 403)
 
     async def test_audio_order_and_concurrent_delivery(self):
         for mode in ("upload-first", "result-first", "concurrent"):
@@ -77,7 +83,7 @@ class PersistenceTest(unittest.IsolatedAsyncioTestCase):
                 await self.save(first)
                 await self.save(second)
             await self.save(ready)
-            rows = await user_notifications(user, 50, 0)
+            rows = await user_notifications(user, 50, 0, None)
             self.assertEqual(len(rows), 1, mode)
             self.assertEqual(rows[0]["type"], "audio.ready.v1")
 
@@ -86,7 +92,7 @@ class PersistenceTest(unittest.IsolatedAsyncioTestCase):
         user = uuid4()
         room["data"]["host_id"] = str(user)
         await self.save(room)
-        self.assertEqual(len(await user_notifications(user, 50, 0)), 1)
+        self.assertEqual(len(await user_notifications(user, 50, 0, None)), 1)
         song = uuid4()
         self.songs.append(song)
         upload, failed = example("audio.uploaded.v1"), example("audio.failed.v1")
@@ -94,7 +100,7 @@ class PersistenceTest(unittest.IsolatedAsyncioTestCase):
         failed["data"]["song_id"] = str(song)
         await self.save(failed)
         await self.save(upload)
-        rows = await user_notifications(user, 50, 0)
+        rows = await user_notifications(user, 50, 0, None)
         self.assertEqual({row["type"] for row in rows}, {"room.created.v1", "audio.failed.v1"})
 
     async def test_broker_to_http(self):

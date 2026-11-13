@@ -123,3 +123,10 @@ def test_la_playlist_trae_el_nombre_del_artista(client, run):
 
     songs = client.get(f"/playlists/{playlist['id']}", headers=headers).json()["songs"]
     assert songs[0]["artist_name"] == "Ana"
+
+
+def test_la_playlist_trae_el_nombre_de_quien_la_armo(client):
+    handle(registered(display_name="Ana"))
+    headers = {"X-User-Id": str(USER_ID)}
+    playlist = client.post("/playlists", json={"name": "Mía"}, headers=headers).json()
+    assert client.get(f"/playlists/{playlist['id']}", headers=headers).json()["owner_name"] == "Ana"

@@ -103,11 +103,11 @@ export default function Playlists() {
     }
 
     return (
-        <div className="page">
+        <div className="page max-w-3xl">
 
             <h1 className="page-title mb-6">Playlists</h1>
 
-            <form onSubmit={createPlaylist} className="card max-w-3xl mb-6 flex flex-wrap items-end gap-2">
+            <form onSubmit={createPlaylist} className="card mb-6 flex flex-wrap items-end gap-2">
                 <label className="flex-1 min-w-48">
                     <span className="block text-sm mb-1">Nueva playlist</span>
                     <input
@@ -152,7 +152,7 @@ export default function Playlists() {
                     onChange={(e) => setQuery(e.target.value)}
                     placeholder="Buscar playlist..."
                     aria-label="Buscar entre tus playlists"
-                    className="field max-w-md mb-6"
+                    className="field mb-6"
                 />
             )}
 
@@ -160,7 +160,7 @@ export default function Playlists() {
                 <p className="muted">Ninguna playlist coincide con "{query.trim()}".</p>
             )}
 
-            <ul className="space-y-4 max-w-3xl">
+            <ul className="space-y-4">
                 {visible.map((playlist) => {
                     const busy = deletingId === playlist.id;
                     return (
@@ -170,11 +170,12 @@ export default function Playlists() {
                                 <h2 className="font-semibold break-words">{playlist.name}</h2>
                                 <p className="muted text-sm">
                                     {playlist.song_count === 1 ? "1 canción" : `${playlist.song_count ?? 0} canciones`}
+                                    {playlist.is_public && <> · <span className="border border-black px-1.5 text-xs text-black">Compartida</span></>}
                                 </p>
                             </Link>
 
                             {confirmId === playlist.id ? (
-                                <div className="flex items-center gap-2" role="group" aria-label={`Confirmar borrado de ${playlist.name}`}>
+                                <div className="flex flex-wrap items-center gap-2" role="group" aria-label={`Confirmar borrado de ${playlist.name}`}>
                                     <span className="text-sm">¿Borrar?</span>
                                     <button
                                         type="button"

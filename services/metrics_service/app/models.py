@@ -13,6 +13,26 @@ class SongPlayed(BaseModel):
     event_id: Identifier
 
 
+class SongDeleted(BaseModel):
+    """song.deleted.v1: la canción sale del top y de los contadores."""
+    event_id: Identifier
+    song_id: Identifier
+
+
+class DomainEvent(BaseModel):
+    """user.registered.v1 o room.created.v1: solo se cuentan."""
+    event_id: Identifier
+    type: Identifier
+    subject_id: Identifier
+    timestamp: AwareDatetime
+
+
+class Summary(BaseModel):
+    plays: int
+    users: int
+    rooms: int
+
+
 class SongMetrics(BaseModel):
     song_id: str
     total_plays: int

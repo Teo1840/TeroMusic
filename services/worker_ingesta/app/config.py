@@ -14,6 +14,11 @@ class Settings(BaseSettings):
 
     max_attempts: int = 3
 
+    # Eventos ya procesados, compartidos entre las copias del Worker Pool.
+    # Vacío = solo en memoria (p. ej. process_local.py o tests).
+    redis_url: str | None = None
+    processed_ttl_sec: int = 7 * 24 * 3600  # RabbitMQ no reentrega algo tan viejo
+
     model_config = SettingsConfigDict(extra="ignore")
 
 

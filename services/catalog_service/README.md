@@ -20,10 +20,10 @@ API en http://localhost:8000/docs. Desde el front, todo pasa por el gateway: `/a
 | `GET` | `/songs/mine` | Canciones del usuario autenticado en cualquier estado, con errores y duración |
 | `DELETE` | `/songs/{song_id}` | Borra una canción propia y sus archivos. `204`, `403` si es ajena, `404` si no existe |
 | `GET` | `/songs/{song_id}` | Estado de una canción (sirve para saber si el worker ya terminó) |
-| `GET` | `/playlists` | Playlists del usuario: `[{id, name, song_count}]` |
-| `POST` | `/playlists` | Crea una (`{name}`, hasta 100 caracteres). `201` |
-| `GET` | `/playlists/{id}` | La playlist con sus canciones en orden (`id, title, duration, status`) |
-| `PATCH` | `/playlists/{id}` | Cambia el nombre (`{name}`) |
+| `GET` | `/playlists` | Playlists del usuario: `[{id, name, is_public, song_count}]` |
+| `POST` | `/playlists` | Crea una (`{name, is_public?}`, hasta 100 caracteres; privada por defecto). `201` |
+| `GET` | `/playlists/{id}` | La playlist (`is_public, is_owner, owner_name`) con sus canciones en orden (`id, title, duration, status`). Si es compartida, la puede ver cualquiera |
+| `PATCH` | `/playlists/{id}` | Cambia el nombre y/o la visibilidad (`{name?, is_public?}`) |
 | `DELETE` | `/playlists/{id}` | Borra la playlist. `204` |
 | `POST` | `/playlists/{id}/songs` | Agrega una canción publicada al final (`{song_id}`). `409` si ya está |
 | `DELETE` | `/playlists/{id}/songs/{song_id}` | Saca una canción. `204` |
@@ -32,8 +32,11 @@ API en http://localhost:8000/docs. Desde el front, todo pasa por el gateway: `/a
 
 ## Playlists
 
-- Son de quien las crea (`X-User-Id`). Las de otro usuario responden `403`; las que no
-  existen, `404`.
+- Son de quien las crea (`X-User-Id`) y solo esa persona puede modificarlas.
+- Privadas por defecto. Con `is_public` (compartida con link) cualquier usuario con sesión
+  puede hacer el `GET /playlists/{id}` para verla y escucharla; no aparece en el listado de
+  los demás. Una privada de otro usuario responde `403`; una que no existe, `404`.
+- La columna `is_public` se agrega sola al arrancar si la tabla es de antes (`add_missing_columns`).
 - Tablas `playlists` y `playlist_songs` (`playlist_id`, `song_id`, `position`). La clave
   `(playlist_id, song_id)` impide repetir una canción en la misma playlist. Se crean solas
   al arrancar, como `songs`.
@@ -102,7 +105,8 @@ memoria y MinIO y RabbitMQ están simulados ([tests/conftest.py](tests/conftest.
   inválidos van a dead-letter y, si la base falla, el mensaje vuelve a la cola.
 - `tests/test_playlists.py`: crear, listar solo las propias, renombrar, borrar, agregar
   (`409` repetida, `404` inexistente o sin publicar), sacar, reordenar (`400` si las
-  canciones no coinciden) y `403` en todo lo de otro usuario.
+  canciones no coinciden), `403` en todo lo de otro usuario, compartir / dejar de compartir
+  (otro la ve pero no la edita) y agregar `is_public` a una tabla vieja.
 
 Desde la raíz del repo, dentro del contenedor (PowerShell):
 

@@ -8,7 +8,8 @@ docker compose exec -T metrics_service python contracts/validate.py
 docker compose exec -T metrics_service python -m tests.integration
 ```
 
-Tests unitarios (sin Postgres ni RabbitMQ; el pool se simula en tests/test_batch.py):
+Tests unitarios (sin Postgres ni RabbitMQ; el pool y los mensajes se simulan en
+tests/test_batch.py y tests/test_handle.py):
 
 ```
 pip install -r requirements.txt -r requirements-dev.txt
@@ -49,6 +50,16 @@ GET /metrics/plays devuelve el total de reproducciones de todas las canciones:
 {"plays":154}
 ```
 
+GET /metrics/summary devuelve los totales globales: reproducciones, usuarios
+registrados y salas creadas (cada usuario o sala cuenta una vez):
+
+```json
+{"plays":42,"users":7,"rooms":3}
+```
+
+Usuarios y salas se cuentan desde que el servicio escucha esos eventos: los
+registros anteriores no estan en su base.
+
 GET /metrics/top?limit=10 devuelve las canciones mas reproducidas, de mayor a
 menor. limit va de 1 a 100 (por defecto 10); fuera de rango responde 422.
 Solo incluye canciones con al menos una reproduccion; los titulos se buscan
@@ -58,15 +69,15 @@ en catalogo.
 {"songs":[{"song_id":"c3d4e5f6-1a2b-4c3d-8e9f-0a1b2c3d4e5f","total_plays":12}]}
 ```
  GET /health verifica PostgreSQL y RabbitMQ. Las dependencias no
-disponibles producen 503. Autenticacion JWT y ruteo del gateway aun pendientes.
+disponibles producen 503. Por el gateway: /api/v1/metrics/... con JWT.
 
 ## Contrato compartido
 
 La fuente es contracts/README.md y los schemas de contracts/.
 
 - Exchange topic durable: musicapp.events.
-- Routing key y type: song.played.v1.
-- Cola durable: metrics.q, binding song.played.v1.
+- Routing keys y types: song.played.v1, song.deleted.v1, user.registered.v1 y room.created.v1.
+- Cola durable: metrics.q, con un binding por cada uno.
 - Errores: musicapp.dlx (topic) -> musicapp.dlq (binding #).
 - Publicar mensajes persistentes y usar confirmaciones AMQP.
 - El productor emite una vez al terminar o abandonar la reproduccion, no por chunk.
@@ -84,16 +95,25 @@ El id del sobre evita duplicados. played_at guarda data.started_at.
 El conteo y el evento se guardan atomicamente antes del ack de RabbitMQ.
 La consistencia es eventual: puede haber mensajes pendientes aun sin contar.
 
-Este servicio implementa metricas de canciones. No se suscribe a
-user.registered.v1 ni room.created.v1: sus metricas no forman parte de esta
-entrega de audio bajo demanda. Los contratos comunes se conservan completos.
+user.registered.v1 y room.created.v1 se guardan en analytics.domain_events
+(un registro por evento, con su fecha; el id del sobre evita duplicados) y se
+cuentan en /metrics/summary.
+
+song.deleted.v1 borra el contador de esa cancion (sale del top y de
+/metrics/songs/{id}). Sus reproducciones quedan en analytics.play_events: el
+total global (/metrics/plays y summary.plays) sale de ese historial y no baja.
 
 ## Persistencia y transicion
 
 Usa analytics.play_events y analytics.song_metrics dentro de POSTGRES_DB.
 El esquema se crea al iniciar; las tablas de otros servicios no se alteran.
-Si PostgreSQL falla, reencola tras una pausa; RabbitMQ se reconecta con
-connect_robust. Los mensajes invalidos pasan a la DLQ compartida.
+Errores al guardar:
+- Pasajeros (PostgreSQL caido, conexion cortada, sin conexiones libres, deadlock):
+  el mensaje vuelve a la cola tras una pausa y se reintenta hasta que la base vuelva.
+- Cualquier otro (el mensaje no se puede guardar nunca): va a la DLQ compartida
+  en vez de reintentarse para siempre.
+Los mensajes invalidos tambien pasan a la DLQ. RabbitMQ se reconecta con
+connect_robust.
 
 Se reemplazo el contrato provisional domain_events/song.played por el contrato
 de main. El formato plano anterior ya no se consume: actualizar productores.

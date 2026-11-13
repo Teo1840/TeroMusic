@@ -84,3 +84,41 @@ def test_minio_deletes_originals_and_entire_processed_folder(monkeypatch):
         (settings.minio_bucket, key) for key in
         [f"{settings.raw_prefix}{song_id}.wav", f"{settings.raw_prefix}{song_id}.mp3", *keys]
     ]
+
+
+def test_delete_publishes_song_deleted(client, run, deleted_files, published):
+    song_id = seed_song(run, SongStatus.PUBLICADO)
+    response = client.delete(f"/songs/{song_id}", headers={**AUTH, "X-Correlation-Id": "req-del"})
+    assert response.status_code == 204
+    assert published == [{
+        "type": "song.deleted.v1",
+        "data": {"song_id": str(song_id), "artist_id": str(USER_ID),
+                 "deleted_by": str(USER_ID), "title": "Tema"},
+        "subject": f"song/{song_id}",
+        "correlation_id": "req-del",
+    }]
+
+
+def test_no_event_when_delete_is_rejected(client, run, deleted_files, published, monkeypatch):
+    other = seed_song(run, owner=uuid.uuid4())
+    assert client.delete(f"/songs/{other}", headers=AUTH).status_code == 403
+
+    async def fail(_):
+        raise ConnectionError("MinIO offline")
+
+    monkeypatch.setattr(minio_client, "delete_song_files", fail)
+    mine = seed_song(run)
+    assert client.delete(f"/songs/{mine}", headers=AUTH).status_code == 503
+    assert published == []
+
+
+def test_broker_failure_after_delete_still_204(client, run, deleted_files, monkeypatch):
+    from app import publisher
+
+    async def fail(*args, **kwargs):
+        raise ConnectionError("RabbitMQ offline")
+
+    monkeypatch.setattr(publisher, "publish", fail)
+    song_id = seed_song(run, SongStatus.PUBLICADO)
+    assert client.delete(f"/songs/{song_id}", headers=AUTH).status_code == 204
+    assert run(lambda s: s.get(Song, song_id)) is None

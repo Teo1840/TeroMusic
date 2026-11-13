@@ -18,7 +18,9 @@ se conserva tras reinicios. El servicio debe estar escuchando antes de las
 subidas: RabbitMQ no reproduce eventos publicados antes de crear su cola.
 
 Valida sobre y payload contra los contratos. Eventos invalidos van a
-`musicapp.dlx` / `musicapp.dlq`. Fallos de BD se reencolan con espera.
+`musicapp.dlx` / `musicapp.dlq`. Si PostgreSQL esta caido (conexion cortada,
+sin conexiones libres, deadlock) el mensaje se reencola con espera; cualquier
+otro error al guardar va a la DLQ en vez de reintentarse para siempre.
 El ACK se envia despues del commit; event_id unico evita alertas duplicadas.
 Los eventos y la alerta se guardan en una transaccion.
 
@@ -62,4 +64,6 @@ docker compose exec notification_service python -m unittest discover -s tests -v
 ```
 
 Verifica contratos, rechazo de eventos invalidos, persistencia, duplicados,
-audio en ambos ordenes y concurrente, aislamiento entre usuarios y paginacion.
+audio en ambos ordenes y concurrente, aislamiento entre usuarios (403 con el
+header del gateway) y paginacion. tests/test_handle.py prueba sin base que
+cada error termine en ack, reintento o DLQ segun corresponda.

@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 from datetime import datetime
@@ -30,6 +31,24 @@ CREATE TABLE IF NOT EXISTS notifications.history (
 );
 CREATE INDEX IF NOT EXISTS notification_user_history ON notifications.history(user_id, created_at DESC, id DESC);
 """
+
+# Errores que se arreglan solos (la base se reinicia, se cortó la conexión, no hay
+# conexiones libres): el mensaje vuelve a la cola. Cualquier otro error es del
+# mensaje y reintentarlo daría lo mismo: va a la cola de errores (musicapp.dlq).
+TRANSIENT_ERRORS = (
+    OSError,  # incluye ConnectionError y TimeoutError (= asyncio.TimeoutError)
+    asyncio.TimeoutError,
+    asyncpg.PostgresConnectionError,
+    asyncpg.InterfaceError,
+    asyncpg.CannotConnectNowError,
+    asyncpg.TooManyConnectionsError,
+    asyncpg.TransactionRollbackError,  # deadlock o conflicto de serialización
+)
+
+
+def is_transient(error: BaseException) -> bool:
+    return isinstance(error, TRANSIENT_ERRORS)
+
 
 async def open_pool():
     return await asyncpg.create_pool(

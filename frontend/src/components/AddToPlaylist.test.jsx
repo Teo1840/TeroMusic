@@ -26,7 +26,7 @@ it("agrega desde el Catálogo a la playlist elegida", async () => {
     api.get.mockImplementation(async (url) => ({ data: url === "/catalog/songs" ? [song] : playlists }));
     render(<MemoryRouter><Catalog /></MemoryRouter>);
     fireEvent.click(await screen.findByRole("button", { name: "Agregar a playlist" }));
-    fireEvent.change(await screen.findByRole("combobox"), { target: { value: "p2" } });
+    fireEvent.change(await screen.findByRole("combobox", { name: /Playlist para/ }), { target: { value: "p2" } });
     fireEvent.click(screen.getByRole("button", { name: "Agregar", exact: true }));
     expect((await screen.findByRole("status")).textContent).toContain('a "Viaje"');
     expect(api.post).toHaveBeenCalledWith("/catalog/playlists/p2/songs", { song_id: "song-a" });

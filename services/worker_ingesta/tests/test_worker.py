@@ -8,6 +8,7 @@ import pytest
 from app import publisher, worker
 from app.audio_processor import ProcessingError
 from app.config import settings
+from app.processed import ProcessedRegistry
 
 SONG = str(uuid.uuid4())
 DATA = {"song_id": SONG, "original_key": f"raw/{SONG}.wav", "bucket": "audio"}
@@ -36,7 +37,8 @@ def no_waits(monkeypatch):
         pass
 
     monkeypatch.setattr(worker.asyncio, "sleep", no_sleep)
-    monkeypatch.setattr(worker, "_processed_ids", set())
+    # Registro de eventos solo en memoria y vacío (sin Redis).
+    monkeypatch.setattr(worker, "registry", ProcessedRegistry(None, 60))
 
 
 def fake_process(*outcomes):

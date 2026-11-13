@@ -8,13 +8,50 @@ from fastapi import FastAPI, HTTPException, Path, Query
 from pydantic import ValidationError
 from jsonschema.exceptions import ValidationError as SchemaValidationError
 
-from app.database import SCHEMA, open_pool, record_play
-from app.models import SongMetrics, SongsBatch, TopSongs, TotalPlays
-from app.events import parse_play
+from app.database import SCHEMA, forget_song, is_transient, open_pool, record_event, record_play
+from app.models import SongDeleted, SongMetrics, SongPlayed, SongsBatch, Summary, TopSongs, TotalPlays
+from app.events import TYPES, parse_event
 
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("metrics")
+
+RETRY_DELAY_SEC = 2
+
+
+async def handle(message, pool):
+    """Procesa un mensaje de metrics.q y lo confirma, reintenta o descarta.
+
+    - Inválido (no cumple el contrato): a la cola de errores, sin reintentar.
+    - Error pasajero de la base: vuelve a la cola después de una pausa.
+    - Cualquier otro error: a la cola de errores. Reintentar un mensaje que falla
+      siempre lo dejaría dando vueltas para siempre y frenaría a los demás.
+    - Bien: ack recién después de que la transacción se confirmó."""
+    try:
+        event = parse_event(message.body, message.routing_key)
+    except (ValidationError, SchemaValidationError, ValueError, UnicodeDecodeError, KeyError, TypeError):
+        logger.warning("Invalid event rejected (routing key %s)", message.routing_key)
+        await message.reject(requeue=False)
+        return
+    try:
+        if isinstance(event, SongPlayed):
+            await record_play(pool, event)
+        elif isinstance(event, SongDeleted):
+            await forget_song(pool, event)
+        else:
+            await record_event(pool, event)
+    except Exception as error:
+        if is_transient(error):
+            logger.warning("Database unavailable (%r); retrying %s later", error, event.event_id)
+            await asyncio.sleep(RETRY_DELAY_SEC)
+            # If the channel closed, RabbitMQ automatically requeues the delivery.
+            if not message.channel.is_closed:
+                await message.nack(requeue=True)
+        else:
+            logger.exception("Event %s cannot be stored; sent to the dead-letter queue", event.event_id)
+            await message.reject(requeue=False)
+        return
+    await message.ack()
 
 
 @asynccontextmanager
@@ -46,33 +83,18 @@ async def lifespan(app: FastAPI):
                 "x-dead-letter-exchange": "musicapp.dlx",
             },
         )
-        await queue.bind(exchange, routing_key="song.played.v1")
+        for kind in TYPES:
+            await queue.bind(exchange, routing_key=kind)
 
         async def consume(message: aio_pika.IncomingMessage):
-            try:
-                event = parse_play(message.body, message.routing_key)
-            except (ValidationError, SchemaValidationError, ValueError, UnicodeDecodeError):
-                logger.warning("Invalid song.played.v1 message rejected")
-                await message.reject(requeue=False)
-                return
-            try:
-                await record_play(pool, event)
-            except Exception:
-                logger.exception("Could not persist play; retrying after backoff")
-                await asyncio.sleep(2)
-                # If the channel closed, RabbitMQ automatically requeues the delivery.
-                if not message.channel.is_closed:
-                    await message.nack(requeue=True)
-                return
-            # Acknowledge only after the database transaction has committed.
-            await message.ack()
+            await handle(message, pool)
 
         consumer_tag = await queue.consume(consume)
         stack.push_async_callback(queue.cancel, consumer_tag)
         app.state.pool = pool
         app.state.broker = broker
         app.state.channel = channel
-        logger.info("Consuming musicapp.events/song.played.v1 on metrics.q")
+        logger.info("Consuming %s on metrics.q", ", ".join(TYPES))
         yield
 
 
@@ -125,7 +147,8 @@ async def total_plays():
     """Total de reproducciones de todas las canciones."""
     try:
         count = await app.state.pool.fetchval(
-            "SELECT COALESCE(SUM(total_plays), 0) FROM analytics.song_metrics",
+            # Del historial: borrar una canción no baja el total de reproducciones.
+            "SELECT COUNT(*) FROM analytics.play_events",
         )
     except Exception:
         logger.exception("Could not read metrics")
@@ -146,3 +169,21 @@ async def top_songs(limit: int = Query(default=10, ge=1, le=100)):
         logger.exception("Could not read metrics")
         raise HTTPException(status_code=503, detail="Database unavailable") from None
     return TopSongs(songs=[SongMetrics(**dict(row)) for row in rows])
+
+
+@app.get("/metrics/summary", response_model=Summary)
+async def summary():
+    """Totales globales: reproducciones, usuarios registrados y salas creadas."""
+    try:
+        row = await app.state.pool.fetchrow(
+            """SELECT
+                 (SELECT COUNT(*) FROM analytics.play_events) AS plays,
+                 (SELECT COUNT(DISTINCT subject_id) FROM analytics.domain_events
+                   WHERE type = 'user.registered.v1') AS users,
+                 (SELECT COUNT(DISTINCT subject_id) FROM analytics.domain_events
+                   WHERE type = 'room.created.v1') AS rooms""",
+        )
+    except Exception:
+        logger.exception("Could not read metrics")
+        raise HTTPException(status_code=503, detail="Database unavailable") from None
+    return Summary(**dict(row))

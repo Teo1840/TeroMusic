@@ -8,7 +8,7 @@ from fastapi import FastAPI, Header, HTTPException, Query
 from pydantic import ValidationError
 from jsonschema.exceptions import ValidationError as SchemaValidationError
 
-from app.database import SCHEMA, open_pool, record_event
+from app.database import SCHEMA, is_transient, open_pool, record_event
 from uuid import UUID
 from datetime import datetime
 from pydantic import BaseModel
@@ -17,6 +17,38 @@ from app.events import TYPES, parse_event
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("notifications")
+
+RETRY_DELAY_SEC = 2
+
+
+async def handle(message, pool):
+    """Procesa un mensaje de notifications.q y lo confirma, reintenta o descarta.
+
+    - Inválido (no cumple el contrato): a la cola de errores, sin reintentar.
+    - Error pasajero de la base: vuelve a la cola después de una pausa.
+    - Cualquier otro error: a la cola de errores. Reintentar un mensaje que falla
+      siempre lo dejaría dando vueltas para siempre y frenaría a los demás.
+    - Bien: ack recién después de que la transacción se confirmó."""
+    try:
+        event = parse_event(message.body, message.routing_key)
+    except (ValidationError, SchemaValidationError, ValueError, UnicodeDecodeError, KeyError, TypeError):
+        logger.warning("Invalid notification event rejected (routing key %s)", message.routing_key)
+        await message.reject(requeue=False)
+        return
+    try:
+        await record_event(pool, event)
+    except Exception as error:
+        if is_transient(error):
+            logger.warning("Database unavailable (%r); retrying %s later", error, event["id"])
+            await asyncio.sleep(RETRY_DELAY_SEC)
+            # If the channel closed, RabbitMQ automatically requeues the delivery.
+            if not message.channel.is_closed:
+                await message.nack(requeue=True)
+        else:
+            logger.exception("Notification %s cannot be stored; sent to the dead-letter queue", event["id"])
+            await message.reject(requeue=False)
+        return
+    await message.ack()
 
 
 @asynccontextmanager
@@ -52,23 +84,7 @@ async def lifespan(app: FastAPI):
             await queue.bind(exchange, routing_key=kind)
 
         async def consume(message: aio_pika.IncomingMessage):
-            try:
-                event = parse_event(message.body, message.routing_key)
-            except (ValidationError, SchemaValidationError, ValueError, UnicodeDecodeError):
-                logger.warning("Invalid notification event rejected")
-                await message.reject(requeue=False)
-                return
-            try:
-                await record_event(pool, event)
-            except Exception:
-                logger.exception("Could not persist notification; retrying after backoff")
-                await asyncio.sleep(2)
-                # If the channel closed, RabbitMQ automatically requeues the delivery.
-                if not message.channel.is_closed:
-                    await message.nack(requeue=True)
-                return
-            # Acknowledge only after the database transaction has committed.
-            await message.ack()
+            await handle(message, pool)
 
         consumer_tag = await queue.consume(consume)
         stack.push_async_callback(queue.cancel, consumer_tag)

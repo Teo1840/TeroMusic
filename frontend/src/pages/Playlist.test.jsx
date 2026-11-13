@@ -83,3 +83,43 @@ describe("cola de playlist", () => {
         expect(api.delete).toHaveBeenCalledWith("/catalog/playlists/p/songs/a");
     });
 });
+
+describe("compartir", () => {
+    function open(data) {
+        api.get.mockImplementation(async (url) => ({ data: url === "/catalog/songs" ? [] : { id: "p", name: "Disco", songs, ...data } }));
+        render(<MemoryRouter initialEntries={["/playlists/p"]}><Routes>
+            <Route path="/playlists/:playlistId" element={<Playlist />} />
+        </Routes></MemoryRouter>);
+    }
+
+    it("el dueño la comparte y ve el link", async () => {
+        api.patch = vi.fn().mockResolvedValue({ data: { id: "p", name: "Disco", is_public: true } });
+        open({ is_owner: true, is_public: false });
+        fireEvent.click(await screen.findByRole("button", { name: "Compartir" }));
+        expect(api.patch).toHaveBeenCalledWith("/catalog/playlists/p", { is_public: true });
+        expect((await screen.findByRole("textbox", { name: "Link de la playlist" })).value).toMatch(/\/playlists\/p$/);
+        expect(screen.getByRole("button", { name: "Dejar de compartir" })).toBeTruthy();
+    });
+
+    it("quien no es dueño solo la ve y la escucha", async () => {
+        open({ is_owner: false, is_public: true, owner_name: "Ana" });
+        expect(await screen.findByText("Ana")).toBeTruthy();
+        expect(screen.getByRole("button", { name: "Reproducir playlist" }).disabled).toBe(false);
+        expect(screen.queryByRole("button", { name: "Cambiar nombre" })).toBeNull();
+        expect(screen.queryByRole("button", { name: "Compartir" })).toBeNull();
+        expect(screen.queryByRole("button", { name: "Subir" })).toBeNull();
+        expect(screen.queryByRole("button", { name: /^Sacar/ })).toBeNull();
+        expect(screen.queryByText("Agregar canción:")).toBeNull();
+    });
+
+    it("una privada de otro avisa que es privada", async () => {
+        api.get.mockImplementation(async (url) => {
+            if (url === "/catalog/songs") return { data: [] };
+            throw { response: { status: 403 } };
+        });
+        render(<MemoryRouter initialEntries={["/playlists/p"]}><Routes>
+            <Route path="/playlists/:playlistId" element={<Playlist />} />
+        </Routes></MemoryRouter>);
+        expect((await screen.findByRole("alert")).textContent).toContain("privada");
+    });
+});

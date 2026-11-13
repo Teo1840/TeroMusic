@@ -36,9 +36,9 @@ export default function RoomBar() {
     // página ni con los botones que se muestren. El espaciador evita que tape el final.
     return (
         <>
-        <div className="h-16" aria-hidden="true" />
-        <div className="fixed inset-x-0 bottom-0 z-10 h-16 border-t border-black bg-white" role="region" aria-label="Sala en vivo">
-            <div className="flex h-full flex-nowrap items-center gap-2 sm:gap-3 px-4 md:px-8">
+        <div className="h-[calc(4rem+env(safe-area-inset-bottom))]" aria-hidden="true" />
+        <div className="fixed inset-x-0 bottom-0 z-20 border-t border-black bg-white pb-[env(safe-area-inset-bottom)]" role="region" aria-label="Sala en vivo">
+            <div className="mx-auto flex h-16 max-w-6xl flex-nowrap items-center gap-2 sm:gap-3 px-4 sm:px-6 lg:px-8">
 
                 {fatal ? (
                     <>
