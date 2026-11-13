@@ -4,7 +4,7 @@ import logging
 import uuid
 from contextlib import asynccontextmanager, suppress
 
-from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Response, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -138,12 +138,47 @@ async def list_songs(session: AsyncSession = Depends(get_session)):
     ]
 
 
+@app.get("/songs/mine")
+async def my_songs(
+    artist_id: uuid.UUID = Depends(current_user_id),
+    session: AsyncSession = Depends(get_session),
+):
+    result = await session.execute(select(Song).where(Song.artist_id == artist_id))
+    return [_song_detail(song) for song in result.scalars()]
+
+
+@app.delete("/songs/{song_id}", status_code=204)
+async def delete_song(
+    song_id: uuid.UUID,
+    artist_id: uuid.UUID = Depends(current_user_id),
+    session: AsyncSession = Depends(get_session),
+):
+    # Serializa el borrado con el consumidor mientras se limpia MinIO.
+    song = await session.scalar(select(Song).where(Song.id == song_id).with_for_update())
+    if song is None:
+        raise HTTPException(404, "Canción no encontrada")
+    if song.artist_id != artist_id:
+        raise HTTPException(403, "Solo podés borrar tus propias canciones")
+    try:
+        await minio_client.delete_song_files(song_id)
+    except Exception:
+        logging.exception("No se pudieron borrar los archivos de %s", song_id)
+        raise HTTPException(503, "No se pudieron borrar los archivos de la canción")
+    await session.delete(song)
+    await session.commit()
+    return Response(status_code=204)
+
+
 @app.get("/songs/{song_id}")
 async def get_song(song_id: uuid.UUID, session: AsyncSession = Depends(get_session)):
     """Estado de una canción (para saber si el worker ya terminó)."""
     song = await session.get(Song, song_id)
     if song is None:
         raise HTTPException(404, "Canción no encontrada")
+    return _song_detail(song)
+
+
+def _song_detail(song: Song) -> dict:
     return {
         "id": str(song.id),
         "title": song.title,
