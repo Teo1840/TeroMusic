@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import api from "../api/client";
 import Metrics from "./Metrics";
@@ -51,6 +51,51 @@ describe("Metrics", () => {
         render(<Metrics />);
 
         expect(await screen.findByText(/Todavía nadie terminó de escuchar/)).toBeTruthy();
+    });
+
+    describe("actualización automática", () => {
+        beforeEach(() => vi.useFakeTimers());
+        afterEach(() => vi.useRealTimers());
+
+        const calls = (url) => api.get.mock.calls.filter(([u]) => u === url).length;
+
+        it("vuelve a pedir las métricas cada 5 segundos", async () => {
+            mockApi({ plays: 1 });
+            render(<Metrics />);
+            await vi.advanceTimersByTimeAsync(0);
+            expect(calls("/metrics/plays")).toBe(1);
+
+            await vi.advanceTimersByTimeAsync(5000);
+            expect(calls("/metrics/plays")).toBe(2);
+        });
+
+        it("deja de pedir al salir de la página, aunque haya un pedido en vuelo", async () => {
+            let release;
+            mockApi({ plays: 1 });
+            const base = api.get.getMockImplementation();
+            api.get.mockImplementation((url, ...rest) =>
+                url === "/metrics/plays" ? new Promise((r) => { release = () => r({ data: { plays: 1 } }); }) : base(url, ...rest)
+            );
+            const { unmount } = render(<Metrics />);
+            await vi.advanceTimersByTimeAsync(0);
+            expect(calls("/metrics/plays")).toBe(1);
+
+            unmount();
+            release();
+            await vi.advanceTimersByTimeAsync(30000);
+            expect(calls("/metrics/plays")).toBe(1);
+        });
+
+        it("una canción borrada en el top no recarga el catálogo en cada vuelta", async () => {
+            mockApi({ plays: 3, top: [{ song_id: "borrada", total_plays: 3 }] });
+            render(<Metrics />);
+            await vi.advanceTimersByTimeAsync(0);
+            const afterFirst = calls("/catalog/songs");
+
+            await vi.advanceTimersByTimeAsync(15000);
+            expect(calls("/metrics/plays")).toBe(4);
+            expect(calls("/catalog/songs")).toBe(afterFirst);
+        });
     });
 
     it("muestra el error si metrics_service no responde", async () => {
