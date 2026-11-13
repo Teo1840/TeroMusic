@@ -72,3 +72,15 @@ class ProfileUpdate(BaseModel):
     display_name: str = Field(max_length=64)
 
     _clean = field_validator("display_name")(_clean_display_name)
+
+
+class PasswordChange(BaseModel):
+    # La actual sin mínimo, como en el login (cuentas viejas con clave corta).
+    current_password: str = Field(max_length=1024)
+    new_password: str
+    _new = field_validator("new_password")(_check_password)
+
+
+class AccountDelete(BaseModel):
+    # Se pide la contraseña: un token robado no alcanza para borrar la cuenta.
+    password: str = Field(max_length=1024)

@@ -122,3 +122,55 @@ def test_broker_failure_after_delete_still_204(client, run, deleted_files, monke
     song_id = seed_song(run, SongStatus.PUBLICADO)
     assert client.delete(f"/songs/{song_id}", headers=AUTH).status_code == 204
     assert run(lambda s: s.get(Song, song_id)) is None
+
+
+# ---------- Admin y datos internos ----------
+
+ADMIN_ID = uuid.UUID("0a0a0a0a-8c4b-4f9d-a7e6-1b2c3d4e5f60")
+ADMIN = {"X-User-Id": str(ADMIN_ID), "X-User-Role": "admin"}
+
+
+def test_admin_borra_cancion_ajena_y_queda_como_deleted_by(client, run, deleted_files, published):
+    owner = uuid.uuid4()
+    song_id = seed_song(run, SongStatus.PUBLICADO, owner=owner)
+    assert client.delete(f"/songs/{song_id}", headers=ADMIN).status_code == 204
+    data = published[0]["data"]
+    assert data["artist_id"] == str(owner)
+    assert data["deleted_by"] == str(ADMIN_ID)
+
+
+def test_rol_que_no_es_admin_no_alcanza_para_borrar_ajena(client, run, deleted_files):
+    song_id = seed_song(run, SongStatus.PUBLICADO, owner=uuid.uuid4())
+    headers = {**AUTH, "X-User-Role": "user"}
+    assert client.delete(f"/songs/{song_id}", headers=headers).status_code == 403
+
+
+def test_get_song_por_gateway_oculta_rutas_internas(client, run):
+    song_id = seed_song(run, SongStatus.PUBLICADO, owner=uuid.uuid4())
+    body = client.get(f"/songs/{song_id}", headers=AUTH).json()
+    assert body["status"] == "PUBLICADO"
+    assert "file_uri" not in body and "renditions" not in body
+
+
+def test_get_song_interno_trae_renditions(client, run):
+    song_id = seed_song(run, SongStatus.PUBLICADO)
+    body = client.get(f"/songs/{song_id}").json()
+    assert "renditions" in body and "file_uri" in body
+
+
+def test_borrador_o_fallida_ajena_es_404_salvo_para_admin(client, run):
+    for status in (SongStatus.BORRADOR, SongStatus.FALLIDO):
+        song_id = seed_song(run, status, owner=uuid.uuid4())
+        assert client.get(f"/songs/{song_id}", headers=AUTH).status_code == 404
+        assert client.get(f"/songs/{song_id}", headers=ADMIN).json()["status"] == status.value
+
+
+def test_el_dueno_ve_su_error(client, run):
+    song_id = seed_song(run, SongStatus.FALLIDO)
+    assert client.get(f"/songs/{song_id}", headers=AUTH).json()["error_message"] == "Error"
+
+
+def test_mis_canciones_sin_rutas_internas(client, run):
+    seed_song(run, SongStatus.PUBLICADO)
+    song = client.get("/songs/mine", headers=AUTH).json()[0]
+    assert "file_uri" not in song and "renditions" not in song

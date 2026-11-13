@@ -16,10 +16,11 @@ API en http://localhost:8000/docs. Desde el front, todo pasa por el gateway: `/a
 | Método | Ruta | Qué hace |
 |---|---|---|
 | `POST` | `/songs/upload` | Sube una canción (`title` + `file`, formulario multipart). Responde `202` con `song_id` |
-| `GET` | `/songs` | Lista las canciones **publicadas**, con `artist_name` |
+| `GET` | `/songs` | Lista las canciones **publicadas**, con `artist_name`, de a páginas (ver abajo) |
+| `GET` | `/artists/{artist_id}` | Perfil público de un artista: `{id, username, display_name, song_count}`. `404` si no se lo conoce ni tiene canciones |
 | `GET` | `/songs/mine` | Canciones del usuario autenticado en cualquier estado, con errores y duración |
-| `DELETE` | `/songs/{song_id}` | Borra una canción propia y sus archivos. `204`, `403` si es ajena, `404` si no existe |
-| `GET` | `/songs/{song_id}` | Estado de una canción (sirve para saber si el worker ya terminó) |
+| `DELETE` | `/songs/{song_id}` | Borra una canción propia (o cualquiera, si es admin) y sus archivos. `204`, `403` si es ajena, `404` si no existe |
+| `GET` | `/songs/{song_id}` | Estado de una canción (sirve para saber si el worker ya terminó). Ver abajo quién ve qué |
 | `GET` | `/playlists` | Playlists del usuario: `[{id, name, is_public, song_count}]` |
 | `POST` | `/playlists` | Crea una (`{name, is_public?}`, hasta 100 caracteres; privada por defecto). `201` |
 | `GET` | `/playlists/{id}` | La playlist (`is_public, is_owner, owner_name`) con sus canciones en orden (`id, title, duration, status`). Si es compartida, la puede ver cualquiera |
@@ -29,6 +30,41 @@ API en http://localhost:8000/docs. Desde el front, todo pasa por el gateway: `/a
 | `DELETE` | `/playlists/{id}/songs/{song_id}` | Saca una canción. `204` |
 | `PUT` | `/playlists/{id}/songs` | Reordena: `{song_ids}` con exactamente las mismas canciones. `400` si no |
 | `GET` | `/health` | Chequeo de vida |
+
+## Listado paginado (`GET /songs`)
+
+Devuelve un array (como siempre) y el total con esos filtros en el header `X-Total-Count`.
+
+| Parámetro | |
+|---|---|
+| `limit`, `offset` | Página. `limit` 50 por defecto, máximo 200 |
+| `sort` | `title` (default), `artist`, `longest`, `shortest`, `newest`. Desempata por id: la paginación es estable |
+| `q` | El título o el nombre del artista contiene el texto (sin distinguir mayúsculas) |
+| `artist_id` | Solo las de ese artista |
+| `ids` | Solo esas canciones, separadas por coma (hasta 100). Métricas lo usa para nombrar el top |
+
+`created_at` se agregó a `songs` para el orden `newest`; las canciones viejas lo tienen en `null`
+y van al final.
+
+## Cuenta borrada (`user.deleted.v1`)
+
+Se borran sus canciones (con sus archivos en MinIO, antes del commit: si MinIO falla el mensaje
+vuelve a la cola), sus playlists, sus canciones dentro de playlists ajenas y su fila en `artists`.
+Después se publica un `song.deleted.v1` por canción para que métricas y salas también las saquen.
+
+## Quién ve qué
+
+- Por el gateway nunca salen las rutas internas de MinIO (`file_uri`, `renditions`): ni en `/songs`,
+  ni en `/songs/mine`, ni en `/songs/{id}`.
+- `GET /songs/{id}` de una canción **no publicada** (BORRADOR o FALLIDO) solo la ven su dueño y
+  los admins; para el resto es `404`. El error del worker (`error_code`, `error_message`) también
+  es solo para ellos.
+- audio_service y rooms_service llaman a `GET /songs/{id}` adentro de Docker, **sin** `X-User-Id`:
+  reciben la ficha completa, con las renditions que necesita audio para leer el archivo. El gateway
+  siempre manda `X-User-Id`, así que un pedido de afuera no puede hacerse pasar por interno, y el
+  puerto 8000 solo se publica en `127.0.0.1`.
+- El rol llega en `X-User-Role` (lo pone el gateway; user_service lo lee de su base). Con
+  `admin` se puede borrar cualquier canción: `song.deleted.v1` lleva `deleted_by` con el admin.
 
 ## Playlists
 
@@ -84,6 +120,9 @@ de cada usuario en la tabla `artists`. Con eso `GET /songs`, `GET /songs/{id}` y
 de una playlist devuelven `artist_name` sin consultar a user_service. Si el artista todavía
 no llegó, `artist_name` es `null`. Un `user.profile_updated.v1` más viejo que lo guardado
 (por `updated_at`) se ignora, y un `user.registered.v1` tardío no pisa un cambio de perfil.
+
+La página de cada artista del front usa `GET /artists/{id}` y `GET /songs?artist_id={id}`.
+Si el artista tiene canciones pero su perfil todavía no llegó, sale con `display_name: null`.
 
 ## Para probar
 

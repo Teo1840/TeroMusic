@@ -30,6 +30,9 @@ CREATE TABLE IF NOT EXISTS notifications.history (
     received_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS notification_user_history ON notifications.history(user_id, created_at DESC, id DESC);
+-- NULL = sin leer. Las bases creadas antes reciben la columna acá.
+ALTER TABLE notifications.history ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS notification_user_unread ON notifications.history(user_id) WHERE read_at IS NULL;
 """
 
 # Errores que se arreglan solos (la base se reinicia, se cortó la conexión, no hay
@@ -62,8 +65,20 @@ async def open_pool():
 
 
 
+async def forget_user(pool, user_id: UUID):
+    """user.deleted.v1: borra los avisos del usuario y quién subió cada canción.
+    Repetirlo no cambia nada."""
+    async with pool.acquire() as connection:
+        async with connection.transaction():
+            await connection.execute("DELETE FROM notifications.history WHERE user_id=$1", user_id)
+            await connection.execute("DELETE FROM notifications.uploads WHERE user_id=$1", user_id)
+
+
 async def record_event(pool, event):
     kind, data = event["type"], event["data"]
+    if kind == "user.deleted.v1":
+        await forget_user(pool, UUID(data["user_id"]))
+        return
     event_id = UUID(event["id"])
     song_id = UUID(data["song_id"]) if "song_id" in data else None
     timestamp = datetime.fromisoformat(event["time"].replace("Z", "+00:00"))

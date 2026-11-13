@@ -1,3 +1,3 @@
-# Solo para los tests. No van en la imagen.
+# Solo para los tests. Se instalan también en la imagen para correrlos con docker compose exec.
 pytest==8.3.3
 httpx==0.27.2

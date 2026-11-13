@@ -15,6 +15,7 @@ EXCHANGE = "musicapp.events"
 SOURCE = "/services/user"
 REGISTERED = "user.registered.v1"
 PROFILE_UPDATED = "user.profile_updated.v1"
+DELETED = "user.deleted.v1"
 RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://guest:guest@rabbitmq:5672/")
 RETRY_DELAYS_SEC = (0.5, 1, 2)
 
@@ -62,6 +63,10 @@ def profile_data(user_id: uuid.UUID, email: str, display_name: str, updated_at: 
         "display_name": display_name,
         "updated_at": rfc3339(updated_at),
     }
+
+
+def deleted_data(user_id: uuid.UUID, deleted_at: datetime) -> dict:
+    return {"user_id": str(user_id), "deleted_at": rfc3339(deleted_at)}
 
 
 def publish(

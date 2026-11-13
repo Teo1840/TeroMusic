@@ -11,7 +11,7 @@ const { CommandError } = playback;
  *   suggestions  → canciones que propuso un oyente. Un anfitrion/coanfitrion las acepta
  *                  (pasan al final de la cola) o las rechaza.
  *
- * Cada elemento: { item_id, song_id, title, duration_sec, added_by: { user_id, name } }
+ * Cada elemento: { item_id, song_id, title, artist_id, artist_name, duration_sec, added_by: { user_id, name } }
  * item_id identifica la entrada (la misma cancion puede estar dos veces en la cola).
  */
 
@@ -26,6 +26,8 @@ function makeItem(song, user) {
     item_id: randomUUID(),
     song_id: song.id,
     title: song.title ?? null,
+    artist_id: song.artist_id ?? null,
+    artist_name: song.artist_name ?? null,
     duration_sec: typeof song.duration === 'number' ? song.duration : null,
     added_by: { user_id: user.id, name: user.name },
   };
@@ -85,7 +87,10 @@ function isIdle(pb, now) {
 function advance(queue, now, startDelayMs) {
   if (!queue.length) return null;
   const [next, ...rest] = queue;
-  const song = { id: next.song_id, title: next.title, duration: next.duration_sec };
+  const song = {
+    id: next.song_id, title: next.title, artist_id: next.artist_id, artist_name: next.artist_name,
+    duration: next.duration_sec,
+  };
   return { playback: playback.setSong(song, now, startDelayMs), queue: rest };
 }
 
@@ -94,7 +99,33 @@ function stopAtEnd(pb, now) {
   return { ...pb, playing: false, position_ms: Math.round(pb.duration_sec * 1000), updated_at_ms: now };
 }
 
+/**
+ * Una cancion se borro del catalogo (song.deleted.v1): sale de la cola y de las sugerencias.
+ * Si es la que esta sonando, pasa a la siguiente de la cola; si no hay, la sala queda sin
+ * cancion (el archivo ya no existe, no se puede seguir escuchando).
+ * Devuelve solo lo que cambio, como commands.apply: {} si la sala no tenia esa cancion.
+ */
+function dropSong({ playback: pb, queue, suggestions }, songId, now, startDelayMs) {
+  const change = {};
+  let newQueue = queue.filter((item) => item.song_id !== songId);
+  if (newQueue.length !== queue.length) change.queue = newQueue;
+  const newSuggestions = suggestions.filter((item) => item.song_id !== songId);
+  if (newSuggestions.length !== suggestions.length) change.suggestions = newSuggestions;
+
+  if (pb.song_id === songId) {
+    const next = advance(newQueue, now, startDelayMs);
+    if (next) {
+      change.playback = next.playback;
+      newQueue = next.queue;
+      change.queue = newQueue;
+    } else {
+      change.playback = playback.initial();
+    }
+  }
+  return change;
+}
+
 module.exports = {
   MAX_QUEUE, MAX_SUGGESTIONS, MAX_PENDING_PER_USER, END_TOLERANCE_MS,
-  makeItem, append, remove, move, suggest, isOver, isIdle, advance, stopAtEnd,
+  makeItem, append, remove, move, suggest, isOver, isIdle, advance, stopAtEnd, dropSong,
 };

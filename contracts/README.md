@@ -16,12 +16,13 @@ contracts/
 |---|---|---|---|
 | `user.registered.v1` | user_service | notification_service, metrics_service, catalog_service | El usuario terminó el registro |
 | `user.profile_updated.v1` | user_service | catalog_service | El usuario cambió su nombre de artista |
+| `user.deleted.v1` | user_service | catalog_service, notification_service, metrics_service | El usuario borró su cuenta (`DELETE /me`) |
 | `audio.uploaded.v1` | catalog_service | worker_ingesta | El original quedó en MinIO (`raw/…`) |
 | `audio.ready.v1` | worker_ingesta | catalog_service | Las versiones procesadas quedaron en MinIO (`processed/…`) |
 | `audio.failed.v1` | worker_ingesta | catalog_service | La transcodificación falló tras los reintentos |
 | `song.played.v1` | audio_service | metrics_service | Terminó o se abandonó una reproducción (una vez, no por chunk) |
 | `room.created.v1` | rooms_service | metrics_service, notification_service | Se creó una sala en vivo |
-| `song.deleted.v1` | catalog_service | metrics_service | El artista borró una canción suya (`DELETE /songs/{id}`): ya no está en el catálogo, las playlists ni MinIO |
+| `song.deleted.v1` | catalog_service | metrics_service, rooms_service | El artista borró una canción suya, o un admin la de cualquiera (`DELETE /songs/{id}`; `deleted_by` dice quién): ya no está en el catálogo, las playlists ni MinIO |
 
 ## Topología RabbitMQ
 
@@ -32,9 +33,10 @@ contracts/
 | Cola | Bindings |
 |---|---|
 | `worker_ingesta.q` | `audio.uploaded.v1` |
-| `catalog.q` | `audio.ready.v1`, `audio.failed.v1`, `user.registered.v1`, `user.profile_updated.v1` |
-| `metrics.q` | `song.played.v1`, `user.registered.v1`, `room.created.v1`, `song.deleted.v1` |
-| `notifications.q` | `user.registered.v1`, `room.created.v1`, `audio.uploaded.v1`, `audio.ready.v1`, `audio.failed.v1` |
+| `catalog.q` | `audio.ready.v1`, `audio.failed.v1`, `user.registered.v1`, `user.profile_updated.v1`, `user.deleted.v1` |
+| `metrics.q` | `song.played.v1`, `user.registered.v1`, `room.created.v1`, `song.deleted.v1`, `user.deleted.v1` |
+| `rooms.q` | `song.deleted.v1` |
+| `notifications.q` | `user.registered.v1`, `room.created.v1`, `audio.uploaded.v1`, `audio.ready.v1`, `audio.failed.v1`, `user.deleted.v1` |
 
 - Dead-letter: exchange `musicapp.dlx` → cola `musicapp.dlq`. Cada cola declara `x-dead-letter-exchange: musicapp.dlx`.
 

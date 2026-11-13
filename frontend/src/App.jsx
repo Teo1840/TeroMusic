@@ -7,6 +7,7 @@ import {
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Catalog from "./pages/Catalog";
+import Artist from "./pages/Artist";
 import Upload from "./pages/Upload";
 import MySongs from "./pages/MySongs";
 import Playlists from "./pages/Playlists";
@@ -16,6 +17,7 @@ import Rooms from "./pages/Rooms";
 import Room from "./pages/Room";
 import Profile from "./pages/Profile";
 import Notifications from "./pages/Notifications";
+import Admin from "./pages/Admin";
 
 import ProtectedRoute from "./components/ProtectedRoute";
 
@@ -47,6 +49,15 @@ export default function App() {
                 element={
                     <ProtectedRoute>
                         <Catalog />
+                    </ProtectedRoute>
+                }
+            />
+
+            <Route
+                path="/artists/:artistId"
+                element={
+                    <ProtectedRoute>
+                        <Artist />
                     </ProtectedRoute>
                 }
             />
@@ -119,6 +130,15 @@ export default function App() {
                 element={
                     <ProtectedRoute>
                         <Notifications />
+                    </ProtectedRoute>
+                }
+            />
+
+            <Route
+                path="/admin"
+                element={
+                    <ProtectedRoute>
+                        <Admin />
                     </ProtectedRoute>
                 }
             />

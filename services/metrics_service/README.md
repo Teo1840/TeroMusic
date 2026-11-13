@@ -60,6 +60,20 @@ registrados y salas creadas (cada usuario o sala cuenta una vez):
 Usuarios y salas se cuentan desde que el servicio escucha esos eventos: los
 registros anteriores no estan en su base.
 
+GET /metrics/plays/daily?days=30&tz=America/Argentina/Buenos_Aires devuelve una entrada por
+día (la última es hoy en esa zona horaria), con 0 en los días sin reproducciones:
+`{"days": [{"date": "2026-11-13", "plays": 4}, ...], "total": 37, "tz": "..."}`.
+`days` va de 1 a 365, `tz` por defecto es UTC (422 si PostgreSQL no la conoce) y
+`?song_id=` limita a una canción. Cuenta también escuchas de canciones ya borradas.
+
+POST /metrics/songs/daily con `{"song_ids": [...], "days": 30, "tz": "UTC"}` devuelve la
+misma serie sumando esas canciones (hasta 500; el perfil la usa con las de un artista).
+
+GET /metrics/trending?days=7&limit=10 compara los últimos `days` días contra los `days`
+anteriores: `{"days": 7, "plays": 40, "previous_plays": 25, "songs": [{"song_id": "...",
+"plays": 12, "previous_plays": 3}]}`, de más a menos escuchada en la ventana actual.
+Las canciones borradas no aparecen en `songs` pero sí suman en los totales.
+
 GET /metrics/top?limit=10 devuelve las canciones mas reproducidas, de mayor a
 menor. limit va de 1 a 100 (por defecto 10); fuera de rango responde 422.
 Solo incluye canciones con al menos una reproduccion; los titulos se buscan

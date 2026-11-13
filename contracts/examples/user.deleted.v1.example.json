@@ -1,0 +1,15 @@
+{
+  "specversion": "1.0",
+  "id": "0f3b8a2e-6d1c-4e7a-9b5f-2c4d6e8f0a13",
+  "source": "/services/user",
+  "type": "user.deleted.v1",
+  "time": "2026-11-13T18:05:00Z",
+  "subject": "user/5a1e2f30-8c4b-4f9d-a7e6-1b2c3d4e5f60",
+  "datacontenttype": "application/json",
+  "dataschema": "contracts/events/user.deleted.v1.schema.json",
+  "correlationid": "req-3c9d1a",
+  "data": {
+    "user_id": "5a1e2f30-8c4b-4f9d-a7e6-1b2c3d4e5f60",
+    "deleted_at": "2026-11-13T18:05:00Z"
+  }
+}

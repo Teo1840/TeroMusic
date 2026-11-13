@@ -2,6 +2,8 @@
 
 - audio.ready.v1 / audio.failed.v1: resultado del worker sobre una canción.
 - user.registered.v1 / user.profile_updated.v1: nombre del artista (tabla artists).
+- user.deleted.v1: la cuenta se borró. Se van sus canciones (con sus archivos), sus
+  playlists y su perfil de artista; por cada canción se publica song.deleted.v1.
 """
 import asyncio
 import json
@@ -10,19 +12,20 @@ import uuid
 from datetime import datetime, timezone
 
 import aio_pika
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from .config import settings
-from . import minio_client
+from . import minio_client, publisher
 from .database import SessionLocal
-from .models import Artist, ProcessedEvent, Song, SongStatus
+from .models import Artist, Playlist, PlaylistSong, ProcessedEvent, Song, SongStatus
 
 log = logging.getLogger("catalog.consumer")
 
 QUEUE = "catalog.q"
 SONG_EVENTS = ("audio.ready.v1", "audio.failed.v1")
 USER_EVENTS = ("user.registered.v1", "user.profile_updated.v1")
-BINDINGS = SONG_EVENTS + USER_EVENTS
+USER_DELETED = "user.deleted.v1"
+BINDINGS = SONG_EVENTS + USER_EVENTS + (USER_DELETED,)
 
 
 def apply_event(song, event_type: str, data: dict) -> bool:
@@ -93,6 +96,51 @@ async def _handle_user_event(session, event_id: str, event_type: str, data: dict
     return "ok" if changed is not None else "sin_cambios"
 
 
+async def _handle_user_deleted(session, event_id: str, user_id: uuid.UUID) -> list[tuple[uuid.UUID, str]]:
+    """Borra todo lo del usuario. Devuelve (id, título) de las canciones borradas.
+
+    Los archivos se borran antes del commit: si MinIO falla, la excepción hace que
+    el mensaje vuelva a la cola y se reintente entero (borrar dos veces no rompe nada)."""
+    songs = (await session.scalars(
+        select(Song).where(Song.artist_id == user_id).with_for_update()
+    )).all()
+    for song in songs:
+        await minio_client.delete_song_files(song.id)
+    song_ids = [song.id for song in songs]
+    deleted = [(song.id, song.title) for song in songs]
+
+    playlist_ids = select(Playlist.id).where(Playlist.owner_id == user_id)
+    await session.execute(delete(PlaylistSong).where(PlaylistSong.playlist_id.in_(playlist_ids)))
+    if song_ids:
+        await session.execute(delete(PlaylistSong).where(PlaylistSong.song_id.in_(song_ids)))
+        await session.execute(delete(Song).where(Song.id.in_(song_ids)))
+    await session.execute(delete(Playlist).where(Playlist.owner_id == user_id))
+    await session.execute(delete(Artist).where(Artist.id == user_id))
+    session.add(ProcessedEvent(id=event_id))
+    await session.commit()
+    return deleted
+
+
+async def _announce_deleted_songs(user_id: uuid.UUID, songs, correlation_id: str | None) -> None:
+    """song.deleted.v1 por cada canción: métricas y salas también las sacan.
+    El borrado ya está hecho; si RabbitMQ falla queda en el log."""
+    for song_id, title in songs:
+        try:
+            await publisher.publish(
+                "song.deleted.v1",
+                data={
+                    "song_id": str(song_id),
+                    "artist_id": str(user_id),
+                    "deleted_by": str(user_id),
+                    "title": title,
+                },
+                subject=f"song/{song_id}",
+                correlation_id=correlation_id or f"user-deleted-{user_id}",
+            )
+        except Exception:
+            log.exception("Canción %s borrada, pero no se pudo publicar song.deleted.v1", song_id)
+
+
 async def handle(message: aio_pika.abc.AbstractIncomingMessage) -> None:
     try:
         event = json.loads(message.body)
@@ -108,6 +156,9 @@ async def handle(message: aio_pika.abc.AbstractIncomingMessage) -> None:
                 raise KeyError("username")
             if event_type == "user.profile_updated.v1":
                 _parse_time(data["updated_at"])
+        elif event_type == USER_DELETED:
+            song_id = None
+            uuid.UUID(data["user_id"])
         else:
             raise KeyError(event_type)
     except (ValueError, KeyError, TypeError) as exc:
@@ -116,10 +167,13 @@ async def handle(message: aio_pika.abc.AbstractIncomingMessage) -> None:
         return
 
     outcome = "ok"
+    deleted_songs = []
     try:
         async with SessionLocal() as session:
             if await session.get(ProcessedEvent, event_id) is not None:
                 outcome = "duplicado"
+            elif event_type == USER_DELETED:
+                deleted_songs = await _handle_user_deleted(session, event_id, uuid.UUID(data["user_id"]))
             elif event_type in USER_EVENTS:
                 outcome = await _handle_user_event(session, event_id, event_type, data)
             else:
@@ -146,12 +200,21 @@ async def handle(message: aio_pika.abc.AbstractIncomingMessage) -> None:
         await message.nack(requeue=True)
         return
 
-    if outcome in ("sin_cancion", "invalido"):
+    if outcome == "sin_cancion":
+        # Caso normal, no un error: la canción se borró mientras el worker la
+        # procesaba. Ya se limpiaron sus archivos tardíos; no va a la dead-letter.
+        log.info("Evento %s de %s, que ya fue borrada: archivos tardíos limpiados", event_type, song_id)
+        await message.ack()
+        return
+    if outcome == "invalido":
         log.warning("Evento %s descartado (%s) para %s", event_type, outcome, song_id)
         await message.reject(requeue=False)
         return
     if outcome == "duplicado":
         log.info("Evento %s ya procesado, se ignora", event_id)
+    elif event_type == USER_DELETED:
+        log.info("Cuenta %s borrada: %d canciones fuera del catálogo", data["user_id"], len(deleted_songs))
+        await _announce_deleted_songs(uuid.UUID(data["user_id"]), deleted_songs, event.get("correlationid"))
     elif event_type in USER_EVENTS:
         log.info("Artista %s: %s (%s)", data["user_id"], event_type, outcome)
     else:

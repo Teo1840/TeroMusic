@@ -147,10 +147,12 @@ def test_mensajes_invalidos_van_a_dead_letter(song_id):
     assert handle(event("audio.ready.v1", song_id, {"duration_sec": 1})) == descartado  # sin renditions
 
 
-def test_cancion_inexistente_va_a_dead_letter(client, deleted_files):
-    song_id = uuid.uuid4()
-    assert handle(event("audio.ready.v1", song_id, READY)) == "reject(requeue=False)"
-    assert deleted_files == [song_id]
+def test_cancion_borrada_limpia_archivos_tardios_y_no_va_a_dead_letter(client, deleted_files):
+    # Se borró mientras el worker la procesaba: es normal, se confirma (ack).
+    for event_type, data in (("audio.ready.v1", READY), ("audio.failed.v1", FAILED)):
+        song_id = uuid.uuid4()
+        assert handle(event(event_type, song_id, data)) == "ack"
+        assert deleted_files[-1] == song_id
 
 
 def test_limpieza_tardia_fallida_reencola(client, monkeypatch):

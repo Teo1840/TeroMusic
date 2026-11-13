@@ -82,8 +82,25 @@ Content-Type: application/json
   Opcionales: `completed`, `bitrate_kbps`, `client`, `room_id`. Se valida
   contra `contracts/events/song.played.v1.schema.json`; campos de mas, 400.
 - La cancion tiene que estar PUBLICADO (404 / 409 si no).
-- Responde `202 {"id": "<id del evento>"}` cuando RabbitMQ confirmo el mensaje.
+- Responde `202 {"id": "<id del evento>", "counted": true}` cuando RabbitMQ confirmo el mensaje.
   Errores: 400, 401 (sin token o token invalido), 404, 409, 503.
+
+### Que no se pueda inflar el contador ([src/plays.js](src/plays.js))
+
+`listened_sec` lo informa el cliente, asi que el servidor desconfia:
+
+| Regla | Si no se cumple |
+|---|---|
+| `started_at` no esta en el futuro (1 min de margen) ni es de hace mas de 24 h | `400` |
+| `started_at + listened_sec` no pasa de "ahora": no se escucho mas de lo que paso | `400` |
+| `listened_sec` no supera la duracion de la cancion (+5 s) | `400` |
+| Al menos `PLAY_MIN_SEC` escuchados (30 s; o la cancion entera si dura menos) | `200 {"counted": false, "reason": "too_short"}`, sin evento |
+| Una persona no escucha dos cosas a la vez: el tramo `[started_at, started_at + listened_sec]` no se superpone con la ultima reproduccion contada de ese usuario | `200 {"counted": false, "reason": "overlap"}`, sin evento |
+
+La ultima regla vive en Redis (`plays:last_end:{user_id}`, compartido entre copias) y se
+chequea con un script Lua, atomico: dos pedidos iguales a la vez no cuentan los dos. Repetir el
+mismo pedido, o mandarlo en bucle, no suma: en una hora entran como mucho 3600 / 30 = 120.
+Sin Redis se cuenta igual (la musica no depende de la cache) y queda un aviso en el log.
 - Al cerrar la pestana usar `fetch(url, { method: 'POST', keepalive: true, headers, body })`:
   `navigator.sendBeacon` no puede mandar el header `Authorization`.
 

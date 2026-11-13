@@ -1,56 +1,26 @@
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
-import api from "../api/client";
-import AudioPlayer from "../components/AudioPlayer";
-import AddToPlaylist from "../components/AddToPlaylist";
 import { PlusIcon } from "../components/Icons";
-import { SORTS, artistsOf, songCount, sortSongs } from "../lib/catalog";
-import { artistLabel, errorMessage, filterByTitle, formatTime, initials } from "../lib/format";
+import SongCard from "../components/SongCard";
+import { SORTS, songCount } from "../lib/catalog";
+import { errorMessage } from "../lib/format";
+import { useDebounced, useSongPages } from "../lib/songs";
 
-const ALL = null;
-
+/**
+ * Catálogo: canciones publicadas de a páginas. La búsqueda (título o artista) y el orden
+ * los resuelve el server (GET /catalog/songs?q=&sort=&limit=&offset=), así no se trae todo.
+ */
 export default function Catalog() {
 
-    const [songs, setSongs] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState("");
     const [query, setQuery] = useState("");
     const [sort, setSort] = useState(SORTS[0].id);
-    const [artistId, setArtistId] = useState(ALL);
+    const term = useDebounced(query.trim(), 300);
+    const { songs, total, loading, loadingMore, error, hasMore, loadMore, reload } = useSongPages({ q: term, sort });
 
-    const artists = useMemo(() => artistsOf(songs), [songs]);
-    const selectedArtist = artists.find((a) => a.id === artistId);
-
-    const visibleSongs = useMemo(() => {
-        const byArtist = artistId === ALL ? songs : songs.filter((s) => (s.artist_id ?? "") === artistId);
-        return sortSongs(filterByTitle(byArtist, query), sort);
-    }, [songs, artistId, query, sort]);
-
-    const filtering = query.trim() !== "" || artistId !== ALL;
-
-    async function loadSongs() {
-        setLoading(true);
-        try {
-            const { data } = await api.get("/catalog/songs");
-            setSongs(data);
-            setError("");
-        } catch (err) {
-            setError(errorMessage(err, "No se pudo cargar el catálogo."));
-        } finally {
-            setLoading(false);
-        }
-    }
-
-    useEffect(() => {
-        loadSongs();
-    }, []);
-
-    function clearFilters() {
-        setQuery("");
-        setArtistId(ALL);
-    }
-
-    const ready = !loading && !error;
+    const filtering = term !== "";
+    // Sin búsqueda y sin resultados: el catálogo está vacío de verdad.
+    const empty = !loading && !error && !filtering && total === 0;
+    const firstLoad = loading && songs.length === 0;
 
     return (
         <div className="page">
@@ -58,10 +28,8 @@ export default function Catalog() {
             <header className="flex flex-wrap items-end justify-between gap-3 mb-4">
                 <div className="min-w-0">
                     <h1 className="page-title">Catálogo</h1>
-                    {ready && songs.length > 0 && (
-                        <p className="muted text-sm mt-1">
-                            {songCount(songs.length)} · {artists.length === 1 ? "1 artista" : `${artists.length} artistas`}
-                        </p>
+                    {!loading && !error && !filtering && total > 0 && (
+                        <p className="muted text-sm mt-1">{songCount(total)}</p>
                     )}
                 </div>
                 <Link to="/upload" className="btn-primary">
@@ -69,7 +37,7 @@ export default function Catalog() {
                 </Link>
             </header>
 
-            {ready && songs.length > 0 && (
+            {!empty && (
                 // Queda fija arriba al bajar: en el celular el catálogo es una lista larga.
                 <div className="sticky top-0 z-10 -mx-4 px-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 py-3 mb-4 bg-white border-b border-black">
                     <div className="flex flex-col sm:flex-row gap-2">
@@ -91,16 +59,16 @@ export default function Catalog() {
                 </div>
             )}
 
-            {loading && <SkeletonGrid />}
+            {firstLoad && <SkeletonGrid />}
 
             {error && (
                 <div className="notice flex flex-wrap items-center justify-between gap-2 mb-4" role="alert">
-                    <span>{error}</span>
-                    <button type="button" onClick={loadSongs} className="btn py-1 text-sm">Reintentar</button>
+                    <span>{errorMessage(error, "No se pudo cargar el catálogo.")}</span>
+                    <button type="button" onClick={reload} className="btn py-1 text-sm">Reintentar</button>
                 </div>
             )}
 
-            {ready && songs.length === 0 && (
+            {empty && (
                 <div className="card text-center py-12">
                     <p className="font-semibold">Todavía no hay canciones.</p>
                     <p className="muted text-sm mt-1 mb-4">Las que subas aparecen acá cuando terminan de procesarse.</p>
@@ -108,75 +76,50 @@ export default function Catalog() {
                 </div>
             )}
 
-            {ready && songs.length > 0 && (
+            {!firstLoad && !error && !empty && (
                 <p className="muted text-sm mb-4" aria-live="polite">
                     {filtering
                         ? <>
-                            {visibleSongs.length === 1 ? "1 resultado" : `${visibleSongs.length} resultados`}
-                            {selectedArtist && <> de <strong className="text-black">{selectedArtist.name}</strong></>}
-                            {query.trim() && <> para "{query.trim()}"</>}
+                            {total === 1 ? "1 resultado" : `${total} resultados`}
+                            {` para "${term}"`}
                             {" · "}
-                            <button type="button" onClick={clearFilters} className="link">Limpiar filtros</button>
+                            <button type="button" onClick={() => setQuery("")} className="link">Limpiar búsqueda</button>
                         </>
-                        : `Mostrando ${songCount(songs.length)}`}
+                        : `Mostrando ${songs.length} de ${songCount(total)}`}
                 </p>
             )}
 
-            {ready && songs.length > 0 && visibleSongs.length === 0 && (
+            {!loading && !error && filtering && songs.length === 0 && (
                 <p className="muted">Ninguna canción coincide con la búsqueda.</p>
             )}
 
-            {ready && visibleSongs.length > 0 && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-                    {visibleSongs.map((song) => (
-                        <SongCard
-                            key={song.id}
-                            song={song}
-                            onArtist={() => setArtistId(song.artist_id ?? "")}
-                        />
-                    ))}
-                </div>
+            {!firstLoad && songs.length > 0 && (
+                <SongGrid songs={songs} busy={loading} hasMore={hasMore} loadingMore={loadingMore} onMore={loadMore} />
             )}
 
         </div>
     );
 }
 
-function SongCard({ song, onArtist }) {
-    const artist = artistLabel(song);
+/** Grilla de tarjetas con "Cargar más". La usan el catálogo y la página del artista. */
+export function SongGrid({ songs, busy, hasMore, loadingMore, onMore, showArtist = true }) {
     return (
-        <article className="card min-w-0 flex flex-col">
-            <div className="flex items-start gap-3">
-                <div
-                    aria-hidden="true"
-                    className="flex h-12 w-12 shrink-0 items-center justify-center bg-black font-bold text-white"
-                >
-                    {initials(artist)}
-                </div>
-                <div className="min-w-0 flex-1">
-                    <h2 className="font-semibold leading-snug break-words">{song.title}</h2>
-                    <button
-                        type="button"
-                        onClick={onArtist}
-                        title={`Ver canciones de ${artist}`}
-                        className="text-sm muted text-left break-words hover:underline underline-offset-2"
-                    >
-                        {artist}
+        <>
+            <div className={`grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 ${busy ? "opacity-50" : ""}`} aria-busy={busy}>
+                {songs.map((song) => <SongCard key={song.id} song={song} showArtist={showArtist} />)}
+            </div>
+            {hasMore && (
+                <div className="mt-6 text-center">
+                    <button type="button" onClick={onMore} disabled={loadingMore} className="btn">
+                        {loadingMore ? "Cargando..." : "Cargar más"}
                     </button>
                 </div>
-                {Number.isFinite(song.duration) && (
-                    <span className="text-xs muted tabular-nums shrink-0 pt-0.5">{formatTime(song.duration)}</span>
-                )}
-            </div>
-            <AudioPlayer songId={song.id} />
-            <div className="mt-auto">
-                <AddToPlaylist song={song} />
-            </div>
-        </article>
+            )}
+        </>
     );
 }
 
-function SkeletonGrid() {
+export function SkeletonGrid() {
     return (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4" aria-busy="true">
             <p className="sr-only" role="status">Cargando canciones...</p>

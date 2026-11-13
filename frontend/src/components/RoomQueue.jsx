@@ -1,4 +1,5 @@
 import { formatTime } from "../lib/format";
+import ArtistLink from "./ArtistLink";
 import { ArrowDownIcon, ArrowUpIcon, CheckIcon, CloseIcon, PlusIcon } from "./Icons";
 import SongSearch from "./SongSearch";
 
@@ -22,7 +23,7 @@ function IconButton({ label, onClick, disabled, children }) {
  * Anfitrión/coanfitriones: agregan, reordenan, sacan y aceptan/rechazan sugerencias.
  * Oyentes: ven la cola y sugieren canciones.
  */
-export default function RoomQueue({ queue, suggestions, songs, canControl, me, send }) {
+export default function RoomQueue({ queue, suggestions, canControl, me, send }) {
     function addSong(song) {
         send({ type: canControl ? "queue_add" : "suggest", song_id: song.id });
     }
@@ -31,7 +32,6 @@ export default function RoomQueue({ queue, suggestions, songs, canControl, me, s
         <div className="card mb-6 space-y-4">
 
             <SongSearch
-                songs={songs}
                 icon={<PlusIcon />}
                 label={canControl ? "Agregar a la cola:" : "Sugerir canción:"}
                 actionIcon={<PlusIcon />}
@@ -53,7 +53,9 @@ export default function RoomQueue({ queue, suggestions, songs, canControl, me, s
                             <span className="text-sm muted w-5 tabular-nums">{index + 1}</span>
                             <span className="flex-1 min-w-0 break-words">
                                 {item.title}
-                                <span className="block text-xs muted truncate">agregada por {item.added_by.name}</span>
+                                <span className="block text-xs muted truncate">
+                                    <ArtistLink song={item} /> · agregada por {item.added_by.name}
+                                </span>
                             </span>
                             <span className="text-xs muted tabular-nums">{item.duration_sec > 0 && formatTime(item.duration_sec)}</span>
                             {canControl && (
@@ -101,7 +103,7 @@ export default function RoomQueue({ queue, suggestions, songs, canControl, me, s
                                 <span className="flex-1 min-w-0 break-words">
                                     {item.title}
                                     <span className="block text-xs muted truncate">
-                                        sugerida por {item.added_by.user_id === me?.user_id ? "vos" : item.added_by.name}
+                                        <ArtistLink song={item} /> · sugerida por {item.added_by.user_id === me?.user_id ? "vos" : item.added_by.name}
                                     </span>
                                 </span>
                                 {canControl && (

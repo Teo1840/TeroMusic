@@ -118,7 +118,6 @@ export default function Playlist() {
     const { playlistId } = useParams();
 
     const [playlist, setPlaylist] = useState(null);
-    const [catalog, setCatalog] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [notice, setNotice] = useState("");
@@ -161,10 +160,6 @@ export default function Playlist() {
         setError("");
         setEditingName(false);
         loadPlaylist(() => cancelled);
-        // El catálogo es para el buscador de "Agregar canción": si falla, solo no se puede agregar.
-        api.get("/catalog/songs")
-            .then(({ data }) => { if (!cancelled) setCatalog(data); })
-            .catch(() => { if (!cancelled) setCatalog([]); });
         return () => { cancelled = true; };
     }, [playlistId]);
 
@@ -172,7 +167,6 @@ export default function Playlist() {
     const isOwner = playlist?.is_owner !== false;
     const songs = playlist?.songs ?? [];
     const inPlaylist = new Set(songs.map((s) => s.id));
-    const addable = catalog.filter((s) => !inPlaylist.has(s.id));
     const playable = songs.filter((song) => (song.status ?? "PUBLICADO") === "PUBLICADO");
     const currentSong = playable.find((song) => song.id === playingId);
     const currentIndex = playable.findIndex((song) => song.id === playingId);
@@ -362,7 +356,7 @@ export default function Playlist() {
                     {isOwner && (
                         <div className="card mb-6">
                             <SongSearch
-                                songs={addable}
+                                exclude={inPlaylist}
                                 icon={<PlusIcon />}
                                 label="Agregar canción:"
                                 actionIcon={<PlusIcon />}

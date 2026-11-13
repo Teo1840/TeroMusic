@@ -9,6 +9,7 @@ const auth = require('../src/auth');
 const cache = require('../src/cache');
 const catalog = require('../src/catalog');
 const events = require('../src/events');
+const plays = require('../src/plays');
 const signed = require('../src/signed');
 const storage = require('../src/storage');
 
@@ -21,6 +22,7 @@ const AUDIO = Buffer.from('0123456789');
 const songs = {
   [SONG]: {
     status: 'PUBLICADO',
+    duration: 180,
     renditions: [
       { processed_key: `processed/${SONG}/128.mp3`, bitrate_kbps: 128 },
       { processed_key: `processed/${SONG}/320.mp3`, bitrate_kbps: 320 },
@@ -30,6 +32,7 @@ const songs = {
 };
 const fakeGetSong = async (id) => songs[id] ?? null;
 const published = [];
+const timeline = new Map();
 const reads = [];
 
 let server;
@@ -48,6 +51,13 @@ test.before(async () => {
   catalog.getSong = fakeGetSong;
   events.publish = async (event) => {
     published.push(event);
+  };
+  // Sin Redis en los tests: la linea de tiempo de cada usuario vive en memoria.
+  plays.claim = async (userId, startedMs, endMs) => {
+    const last = timeline.get(userId) ?? 0;
+    if (startedMs + 2000 < last) return false;
+    timeline.set(userId, endMs);
+    return true;
   };
 
   server = app.listen(0);
@@ -69,7 +79,9 @@ function streamUrl(id, extra = '') {
   return `${base}/audio/stream/${id}?${query}${extra}`;
 }
 
-const valid = { song_id: SONG, started_at: '2026-11-09T15:04:05Z', listened_sec: 42.5, completed: false };
+// Hace 5 minutos (sin milisegundos, como el contrato).
+const isoAgo = (ms) => new Date(Date.now() - ms).toISOString().replace(/\.\d+Z$/, 'Z');
+const valid = { song_id: SONG, started_at: isoAgo(5 * 60 * 1000), listened_sec: 42.5, completed: false };
 
 test('stream: lee la rendition del catalogo segun ?bitrate', async () => {
   let response = await fetch(streamUrl(SONG), { headers: { Range: 'bytes=0-4' } });
@@ -132,6 +144,7 @@ test('stream-url: 401 sin login, 404/409 si la cancion no se puede escuchar', as
 
 test('played: publica el evento con el user_id del JWT', async () => {
   published.length = 0;
+  timeline.clear();
   const response = await played(valid);
   assert.equal(response.status, 202);
   assert.equal(published.length, 1);
@@ -159,12 +172,52 @@ test('played: 400 si el body no cumple el contrato', async () => {
   assert.equal(published.length, 0);
 });
 
+test('played: tiempos imposibles dan 400 y no publican', async () => {
+  published.length = 0;
+  timeline.clear();
+  for (const body of [
+    { ...valid, started_at: isoAgo(-10 * 60 * 1000) }, // en el futuro
+    { ...valid, started_at: isoAgo(2 * 24 * 60 * 60 * 1000) }, // de hace dos dias
+    { ...valid, started_at: isoAgo(10 * 1000), listened_sec: 120 }, // mas de lo que paso
+    { ...valid, started_at: isoAgo(60 * 60 * 1000), listened_sec: 600 }, // mas que la cancion
+  ]) {
+    assert.equal((await played(body)).status, 400, JSON.stringify(body));
+  }
+  assert.equal(published.length, 0);
+});
+
+test('played: menos del minimo se acepta pero no cuenta', async () => {
+  published.length = 0;
+  timeline.clear();
+  const response = await played({ ...valid, listened_sec: 10 });
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { counted: false, reason: 'too_short' });
+  assert.equal(published.length, 0);
+});
+
+test('played: repetir el pedido o superponer reproducciones no infla el contador', async () => {
+  published.length = 0;
+  timeline.clear();
+  assert.equal((await played(valid)).status, 202);
+  const again = await played(valid);
+  assert.equal(again.status, 200);
+  assert.deepEqual(await again.json(), { counted: false, reason: 'overlap' });
+  // Empieza 10 s despues de la anterior, que duro 42.5 s: se superpone.
+  const overlapping = { ...valid, started_at: new Date(Date.parse(valid.started_at) + 10000).toISOString().replace(/\.\d+Z$/, 'Z') };
+  assert.equal((await played(overlapping)).status, 200);
+  // Empieza cuando termino la anterior: cuenta.
+  const after = { ...valid, started_at: new Date(Date.parse(valid.started_at) + 60000).toISOString().replace(/\.\d+Z$/, 'Z') };
+  assert.equal((await played(after)).status, 202);
+  assert.equal(published.length, 2);
+});
+
 test('played: 404 si no existe y 409 si no esta publicada', async () => {
   assert.equal((await played({ ...valid, song_id: MISSING })).status, 404);
   assert.equal((await played({ ...valid, song_id: DRAFT })).status, 409);
 });
 
 test('catalogo caido: 503', async () => {
+  timeline.clear();
   catalog.getSong = async () => {
     throw new catalog.CatalogUnavailable('caido');
   };

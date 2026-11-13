@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import api from "../api/client";
 import { NextIcon, PauseIcon, PlayIcon, PlaybackIcon, VolumeIcon, VolumeOffIcon } from "../components/Icons";
 import RoomQueue from "../components/RoomQueue";
+import ArtistLink from "../components/ArtistLink";
 import SongSearch from "../components/SongSearch";
 import { formatTime } from "../lib/format";
 import { positionAt } from "../lib/room";
@@ -34,7 +35,6 @@ export default function Room() {
     }, [roomId, join]);
 
     const [dragSec, setDragSec] = useState(null);    // posición mientras se arrastra la barra
-    const [songs, setSongs] = useState([]);
     const [copied, setCopied] = useState(false);
 
     // Al cambiar de canción: soltar un arrastre que quedó colgado (p. ej. un toque
@@ -42,11 +42,6 @@ export default function Room() {
     useEffect(() => {
         setDragSec(null);
     }, [songId]);
-
-    // Canciones del catálogo: para poner, agregar a la cola o sugerir.
-    useEffect(() => {
-        api.get("/catalog/songs").then(({ data }) => setSongs(data)).catch(() => {});
-    }, []);
 
     function commitSeek() {
         if (dragSec === null) return;
@@ -125,7 +120,10 @@ export default function Room() {
 
                 <p className="text-lg break-words">
                     {playback.title
-                        ? <><PlaybackIcon playing={playback.playing} /> <strong>{playback.title}</strong></>
+                        ? <>
+                            <PlaybackIcon playing={playback.playing} /> <strong>{playback.title}</strong>
+                            {playback.artist_name && <span className="muted"> · <ArtistLink song={playback} /></span>}
+                        </>
                         : "Todavía no hay música."}
                     {startingIn > 0 && <span className="muted"> · arranca en {startingIn} s</span>}
                 </p>
@@ -222,7 +220,6 @@ export default function Room() {
 
                 {canControl && (
                     <SongSearch
-                        songs={songs}
                         icon={<PlayIcon />}
                         label="Poner ahora:"
                         actionIcon={<PlayIcon />}
@@ -247,7 +244,6 @@ export default function Room() {
             <RoomQueue
                 queue={queue}
                 suggestions={suggestions}
-                songs={songs}
                 canControl={canControl}
                 me={me}
                 send={send}

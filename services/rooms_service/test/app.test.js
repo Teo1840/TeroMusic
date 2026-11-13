@@ -61,8 +61,8 @@ test.after(() => server.close());
 
 const tokenFor = (sub, email = 'ana@example.com') => auth.sign({ sub, email });
 
-function call(method, path, { body, user = HOST } = {}) {
-  const headers = { 'Content-Type': 'application/json' };
+function call(method, path, { body, user = HOST, headers: extra = {} } = {}) {
+  const headers = { 'Content-Type': 'application/json', ...extra };
   if (user) headers.Authorization = `Bearer ${tokenFor(user)}`;
   return fetch(`${base}${path}`, { method, headers, body: body && JSON.stringify(body) });
 }
@@ -126,5 +126,14 @@ test('cerrar sala: solo el anfitrion; avisa a los conectados', async () => {
   store.published.length = 0;
   assert.equal((await call('DELETE', `/rooms/${created.id}`)).status, 204);
   assert.deepEqual(store.published, [{ roomId: created.id, payload: { type: 'closed' } }]);
+  assert.equal((await call('GET', `/rooms/${created.id}`)).status, 404);
+});
+
+test('cerrar sala: un admin puede cerrar la de otro; el header de otro rol no alcanza', async () => {
+  const created = await (await call('POST', '/rooms', { body: { name: 'Moderada' } })).json();
+  const asUser = { user: OTHER, headers: { 'X-User-Role': 'user' } };
+  assert.equal((await call('DELETE', `/rooms/${created.id}`, asUser)).status, 403);
+  const asAdmin = { user: OTHER, headers: { 'X-User-Role': 'admin' } };
+  assert.equal((await call('DELETE', `/rooms/${created.id}`, asAdmin)).status, 204);
   assert.equal((await call('GET', `/rooms/${created.id}`)).status, 404);
 });

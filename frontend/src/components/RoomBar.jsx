@@ -28,8 +28,10 @@ export default function RoomBar() {
     let detail = "Conectando...";
     if (status === "reconnecting") detail = "Reconectando...";
     else if (localPaused) detail = "Silenciada para vos";
-    else if (playback?.title) detail = `${playback.playing ? "Sonando" : "En pausa"}: ${playback.title}`;
-    else if (current?.song_id) detail = "No está sonando nada";
+    else if (playback?.title) {
+        const by = playback.artist_name ? ` · ${playback.artist_name}` : "";
+        detail = `${playback.playing ? "Sonando" : "En pausa"}: ${playback.title}${by}`;
+    } else if (current?.song_id) detail = "No está sonando nada";
     else if (state) detail = "Todavía no hay música";
 
     // Altura fija y siempre pegada abajo de la ventana: no cambia con el contenido de la

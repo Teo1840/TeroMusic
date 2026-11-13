@@ -1,3 +1,5 @@
+import uuid
+
 from fastapi import (
     APIRouter,
     BackgroundTasks,
@@ -23,7 +25,10 @@ from ..security import (
     hash_password,
     verify_password,
     create_access_token,
-    get_current_user
+    get_current_user,
+    initial_role,
+    session_expired,
+    session_matches
 )
 
 
@@ -59,7 +64,7 @@ def register(
     user = User(
         email=data.email,
         hashed_password=hash_password(data.password),
-        role="user",
+        role=initial_role(data.email),
         display_name=data.display_name or username_from_email(data.email)
     )
 
@@ -126,7 +131,55 @@ def login(
     token = create_access_token(
         user.id,
         user.email,
-        user.role
+        user.role,
+        user.token_version or 0
+    )
+
+    return {
+        "access_token": token,
+        "token_type": "bearer"
+    }
+
+
+def _session_user(current_user: dict, db: Session) -> User:
+    """Usuario del token si la sesión sigue valiendo: la cuenta existe y la
+    contraseña no cambió desde que se emitió (si no, 401)."""
+    try:
+        user = db.get(User, uuid.UUID(current_user["sub"]))
+    except ValueError:
+        user = None
+    if not session_matches(current_user, user):
+        raise HTTPException(
+            status_code=401,
+            detail="Session revoked"
+        )
+    return user
+
+
+@router.post(
+    "/refresh",
+    response_model=TokenResponse
+)
+def refresh(
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Cambia un token vigente por otro nuevo (otros 60 minutos), así la sesión
+    no se corta mientras se usa la app. Un token vencido ya no se renueva, y
+    tampoco pasado SESSION_MAX_HOURS desde el login."""
+    user = _session_user(current_user, db)
+    if session_expired(current_user):
+        raise HTTPException(
+            status_code=401,
+            detail="Session too old, log in again"
+        )
+
+    token = create_access_token(
+        user.id,
+        user.email,
+        user.role,
+        user.token_version or 0,
+        auth_time=current_user.get("auth_time") or current_user.get("iat")
     )
 
     return {
@@ -138,11 +191,16 @@ def login(
 @router.get("/verify")
 def verify_token(
     response: Response,
-    current_user=Depends(get_current_user)
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
+    # Una consulta por clave primaria: así una cuenta borrada o una contraseña
+    # cambiada cortan las sesiones abiertas al instante, sin esperar a que venzan.
+    # El rol también sale de la base: un cambio de rol (routers/admin.py) vale al instante.
+    user = _session_user(current_user, db)
 
-    response.headers["X-User-Id"] = current_user["sub"]
-    response.headers["X-User-Role"] = current_user["role"]
+    response.headers["X-User-Id"] = str(user.id)
+    response.headers["X-User-Role"] = user.role
 
     return {
         "valid": True

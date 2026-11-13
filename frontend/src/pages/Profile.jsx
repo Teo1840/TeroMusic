@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import api from "../api/client";
+import DailyPlaysChart from "../components/DailyPlaysChart";
+import { clearToken, saveToken } from "../lib/auth";
 import { errorMessage, formatDate, formatMonthYear, initials } from "../lib/format";
 
 /*
@@ -12,6 +14,11 @@ import { errorMessage, formatDate, formatMonthYear, initials } from "../lib/form
  *   GET   /catalog/playlists    → [{ id, name, song_count }]
  *   POST  /metrics/songs/batch  → body { song_ids } → { songs: [{ song_id, total_plays }] }
  *                                 (todas las publicadas en un pedido, hasta 500 por pedido)
+ *   POST  /metrics/songs/daily  → body { song_ids, days, tz } → { days: [{ date, plays }], total }
+ *   POST  /auth/me/password     → body { current_password, new_password } → { access_token }
+ *                                 (las otras sesiones se cierran; esta sigue con el token nuevo)
+ *   DELETE /auth/me             → body { password } → 204. Se borran también sus canciones,
+ *                                 playlists y avisos (user.deleted.v1).
  *
  * El nombre de artista llega al catálogo por el evento user.profile_updated.v1,
  * así que puede tardar unos segundos en verse en las canciones.
@@ -25,6 +32,8 @@ const FAILED = "error";
 const METRICS_BATCH = 500;
 
 const ROLE_LABEL = { user: "Usuario", admin: "Administrador" };
+const DAILY_DAYS = 30;
+const PASSWORD_MIN = 8;
 
 export default function Profile() {
 
@@ -36,6 +45,7 @@ export default function Profile() {
     const [songs, setSongs] = useState(null);
     const [playlists, setPlaylists] = useState(null);
     const [plays, setPlays] = useState(null);  // { total, top: { title, plays } | null }
+    const [daily, setDaily] = useState(null);  // { days, total } de tus canciones
 
     useEffect(() => {
         let alive = true;
@@ -53,7 +63,11 @@ export default function Profile() {
             .then(({ data }) => {
                 if (!alive) return;
                 setSongs(data);
-                return loadPlays(data.filter((s) => s.status === "PUBLICADO"));
+                const published = data.filter((s) => s.status === "PUBLICADO");
+                loadDaily(published)
+                    .then((result) => alive && setDaily(result))
+                    .catch(() => alive && setDaily(FAILED));
+                return loadPlays(published);
             })
             .then((result) => alive && result !== undefined && setPlays(result))
             .catch(() => {
@@ -76,12 +90,47 @@ export default function Profile() {
                 <div className="space-y-6">
                     <ProfileHeader profile={profile} />
                     <ActivityStats songs={songs} playlists={playlists} plays={plays} />
+                    <MyDailyPlays daily={daily} />
                     <NameForm profile={profile} onSaved={setProfile} />
+                    <PasswordForm />
                     <AccountInfo profile={profile} />
+                    <DeleteAccount />
                 </div>
             )}
 
         </div>
+    );
+}
+
+/** Reproducciones por día de las canciones publicadas (las primeras 500). null si no hay. */
+async function loadDaily(published) {
+    if (published.length === 0) return null;
+    let tz = "UTC";
+    try {
+        tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+    } catch { /* se queda en UTC */ }
+    const { data } = await api.post("/metrics/songs/daily", {
+        song_ids: published.slice(0, METRICS_BATCH).map((s) => s.id),
+        days: DAILY_DAYS,
+        tz
+    });
+    return data;
+}
+
+function MyDailyPlays({ daily }) {
+    if (daily === null) return null;
+    return (
+        <section aria-labelledby="daily-title" className="card space-y-3">
+            <div>
+                <h2 id="daily-title" className="section-title">Tus reproducciones por día</h2>
+                <p className="muted text-sm mt-1">
+                    {daily === FAILED
+                        ? "No se pudieron cargar."
+                        : `${daily.total.toLocaleString("es")} en los últimos ${DAILY_DAYS} días, sumando todas tus canciones.`}
+                </p>
+            </div>
+            {daily !== FAILED && <DailyPlaysChart days={daily.days} title="Tus reproducciones por día" />}
+        </section>
     );
 }
 
@@ -310,6 +359,154 @@ function AccountInfo({ profile }) {
                     </div>
                 ))}
             </dl>
+        </section>
+    );
+}
+
+
+function PasswordForm() {
+    const [current, setCurrent] = useState("");
+    const [next, setNext] = useState("");
+    const [repeat, setRepeat] = useState("");
+    const [saving, setSaving] = useState(false);
+    const [error, setError] = useState("");
+    const [notice, setNotice] = useState("");
+
+    const mismatch = repeat !== "" && next !== repeat;
+    const tooShort = next !== "" && next.length < PASSWORD_MIN;
+    const ready = current && next && repeat && !mismatch && !tooShort;
+
+    async function submit(e) {
+        e.preventDefault();
+        if (!ready) return;
+        setSaving(true);
+        setError("");
+        setNotice("");
+        try {
+            const { data } = await api.post("/auth/me/password", { current_password: current, new_password: next });
+            saveToken(data.access_token);
+            setCurrent("");
+            setNext("");
+            setRepeat("");
+            setNotice("Listo. Cambiaste tu contraseña y se cerraron tus otras sesiones.");
+        } catch (err) {
+            setError(errorMessage(err, "No se pudo cambiar la contraseña."));
+        } finally {
+            setSaving(false);
+        }
+    }
+
+    const field = (id, label, value, set, autoComplete) => (
+        <div className="space-y-1">
+            <label htmlFor={id} className="block text-sm font-semibold">{label}</label>
+            <input
+                id={id}
+                type="password"
+                value={value}
+                autoComplete={autoComplete}
+                onChange={(e) => {
+                    set(e.target.value);
+                    setError("");
+                    setNotice("");
+                }}
+                className="field"
+                required
+            />
+        </div>
+    );
+
+    return (
+        <form onSubmit={submit} aria-labelledby="password-title" className="card space-y-3">
+            <h2 id="password-title" className="section-title">Contraseña</h2>
+            <p className="text-sm muted">
+                Al cambiarla se cierra la sesión en tus otros dispositivos. En este seguís adentro.
+            </p>
+            {field("current-password", "Contraseña actual", current, setCurrent, "current-password")}
+            {field("new-password", "Contraseña nueva", next, setNext, "new-password")}
+            {tooShort && <p className="text-sm">Tiene que tener al menos {PASSWORD_MIN} caracteres.</p>}
+            {field("repeat-password", "Repetí la contraseña nueva", repeat, setRepeat, "new-password")}
+            {mismatch && <p className="text-sm">Las dos contraseñas nuevas no coinciden.</p>}
+            {error && <p className="notice" role="alert">{error}</p>}
+            {notice && <p className="text-sm" role="status">{notice}</p>}
+            <button type="submit" disabled={saving || !ready} className="btn-primary">
+                {saving ? "Guardando..." : "Cambiar contraseña"}
+            </button>
+        </form>
+    );
+}
+
+function DeleteAccount() {
+    const navigate = useNavigate();
+    const [open, setOpen] = useState(false);
+    const [password, setPassword] = useState("");
+    const [deleting, setDeleting] = useState(false);
+    const [error, setError] = useState("");
+
+    async function submit(e) {
+        e.preventDefault();
+        if (!password) return;
+        setDeleting(true);
+        setError("");
+        try {
+            await api.delete("/auth/me", { data: { password } });
+            clearToken();
+            navigate("/login", { replace: true });
+        } catch (err) {
+            setError(errorMessage(err, "No se pudo borrar la cuenta."));
+            setDeleting(false);
+        }
+    }
+
+    return (
+        <section aria-labelledby="delete-title" className="card space-y-3 border-2">
+            <h2 id="delete-title" className="section-title">Borrar cuenta</h2>
+            <p className="text-sm">
+                Se borran para siempre tu cuenta, tus canciones (salen del catálogo, de las playlists de
+                otros y de las salas), tus playlists y tus avisos. No se puede deshacer.
+            </p>
+            {!open ? (
+                <button type="button" className="btn" onClick={() => setOpen(true)}>
+                    Quiero borrar mi cuenta
+                </button>
+            ) : (
+                <form onSubmit={submit} className="space-y-3">
+                    <div className="space-y-1">
+                        <label htmlFor="delete-password" className="block text-sm font-semibold">
+                            Escribí tu contraseña para confirmar
+                        </label>
+                        <input
+                            id="delete-password"
+                            type="password"
+                            value={password}
+                            autoComplete="current-password"
+                            onChange={(e) => {
+                                setPassword(e.target.value);
+                                setError("");
+                            }}
+                            className="field"
+                            required
+                        />
+                    </div>
+                    {error && <p className="notice" role="alert">{error}</p>}
+                    <div className="flex flex-wrap gap-2">
+                        <button type="submit" disabled={deleting || !password} className="btn-primary">
+                            {deleting ? "Borrando..." : "Borrar mi cuenta para siempre"}
+                        </button>
+                        <button
+                            type="button"
+                            className="btn"
+                            disabled={deleting}
+                            onClick={() => {
+                                setOpen(false);
+                                setPassword("");
+                                setError("");
+                            }}
+                        >
+                            Cancelar
+                        </button>
+                    </div>
+                </form>
+            )}
         </section>
     );
 }

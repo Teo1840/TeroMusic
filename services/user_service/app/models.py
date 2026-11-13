@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import Column, String, DateTime
+from sqlalchemy import Column, DateTime, Integer, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 
@@ -49,4 +49,13 @@ class User(Base):
     profile_updated_at = Column(
         DateTime(timezone=True),
         nullable=True
+    )
+
+    # Sube en cada cambio de contraseña. Va en el JWT ("ver"): un token con un
+    # número viejo deja de valer, así cambiar la clave cierra las otras sesiones.
+    token_version = Column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default="0"
     )

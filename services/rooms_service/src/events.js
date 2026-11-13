@@ -12,6 +12,14 @@ const EXCHANGE = 'musicapp.events';
 const TYPE = 'room.created.v1';
 const RETRY_DELAYS_MS = [500, 1000, 2000];
 
+// Eventos que consume: song.deleted.v1 (sacar la cancion de las salas abiertas).
+// Una sola cola para todas las copias del servicio: cada evento lo procesa una sola.
+const SONG_DELETED = 'song.deleted.v1';
+const QUEUE = 'rooms.q';
+const DEAD_EXCHANGE = 'musicapp.dlx';
+const DEAD_QUEUE = 'musicapp.dlq';
+const RETRY_AFTER_MS = 1000;
+
 // En el repo: ../../../contracts. En la imagen Docker: /app/contracts.
 const CONTRACTS = [path.resolve(__dirname, '../../../contracts'), path.resolve(__dirname, '../contracts')]
   .find((dir) => fs.existsSync(dir));
@@ -19,13 +27,16 @@ if (!CONTRACTS) throw new Error('No se encontro la carpeta contracts/');
 
 const ajv = new Ajv2020({ allErrors: true, strict: false });
 addFormats(ajv);
-const validateData = ajv.compile(
-  JSON.parse(fs.readFileSync(path.join(CONTRACTS, `events/${TYPE}.schema.json`), 'utf8')),
-);
+const schema = (file) => JSON.parse(fs.readFileSync(path.join(CONTRACTS, file), 'utf8'));
+const validateData = ajv.compile(schema(`events/${TYPE}.schema.json`));
+const validateEnvelope = ajv.compile(schema('envelope.schema.json'));
+const validateSongDeleted = ajv.compile(schema(`events/${SONG_DELETED}.schema.json`));
 
 let connection = null;
 let channel = null;
+let consumerChannel = null;
 let closing = false;
+let songDeletedHandler = null;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -50,6 +61,88 @@ function buildRoomCreated(data, { correlationId, now = new Date() } = {}) {
   return event;
 }
 
+class InvalidEvent extends Error {}
+
+const errorsOf = (validate) => validate.errors.map((e) => `${e.instancePath || 'data'} ${e.message}`).join('; ');
+
+/** Valida un song.deleted.v1 (sobre + data) y devuelve su data. Lanza InvalidEvent si no cumple. */
+function parseSongDeleted(body, routingKey) {
+  let event;
+  try {
+    event = JSON.parse(body.toString());
+  } catch {
+    throw new InvalidEvent('JSON invalido');
+  }
+  if (!validateEnvelope(event)) throw new InvalidEvent(`Sobre invalido: ${errorsOf(validateEnvelope)}`);
+  if (event.type !== SONG_DELETED || routingKey !== SONG_DELETED) {
+    throw new InvalidEvent(`Tipo inesperado: ${event.type} (routing key ${routingKey})`);
+  }
+  if (!validateSongDeleted(event.data)) throw new InvalidEvent(`${SONG_DELETED} invalido: ${errorsOf(validateSongDeleted)}`);
+  return event.data;
+}
+
+/**
+ * Procesa una entrega de RabbitMQ:
+ *   ok            → ack
+ *   invalido      → reject sin reencolar (va a la cola de errores musicapp.dlq)
+ *   falla interna → (Redis caido, sala ocupada) se reencola despues de un rato.
+ * Sacar una cancion es idempotente: procesar dos veces el mismo evento no cambia nada.
+ */
+async function handleDelivery(ch, message, handler, { retryAfterMs = RETRY_AFTER_MS } = {}) {
+  let data;
+  try {
+    data = parseSongDeleted(message.content, message.fields.routingKey);
+  } catch (error) {
+    console.warn(`[events] Descartado a ${DEAD_QUEUE}: ${error.message}`);
+    ch.nack(message, false, false);
+    return 'dead';
+  }
+  try {
+    await handler(data);
+  } catch (error) {
+    console.warn(`[events] ${SONG_DELETED} ${data.song_id}: ${error.message}; se reintenta`);
+    await sleep(retryAfterMs);
+    try {
+      ch.nack(message, false, true);
+    } catch {
+      // Canal cerrado: RabbitMQ lo vuelve a entregar solo.
+    }
+    return 'retry';
+  }
+  try {
+    ch.ack(message);
+  } catch {
+    // Canal cerrado: se vuelve a entregar y, como es idempotente, no pasa nada.
+  }
+  return 'ack';
+}
+
+/** Registra quien procesa song.deleted.v1. Llamar antes de connect(). */
+function onSongDeleted(handler) {
+  songDeletedHandler = handler;
+}
+
+async function startConsumer() {
+  consumerChannel = await connection.createChannel();
+  await consumerChannel.prefetch(10);
+  // Mismas declaraciones que metrics_service: el que arranca primero las crea.
+  await consumerChannel.assertExchange(DEAD_EXCHANGE, 'topic', { durable: true });
+  await consumerChannel.assertQueue(DEAD_QUEUE, { durable: true });
+  await consumerChannel.bindQueue(DEAD_QUEUE, DEAD_EXCHANGE, '#');
+  await consumerChannel.assertQueue(QUEUE, { durable: true, arguments: { 'x-dead-letter-exchange': DEAD_EXCHANGE } });
+  await consumerChannel.bindQueue(QUEUE, EXCHANGE, SONG_DELETED);
+  const ch = consumerChannel;
+  ch.on('error', (error) => console.warn(`[events] Canal de consumo: ${error.message}`));
+  // Si el broker cierra solo el canal, se cierra la conexion para que connect() rearme todo.
+  ch.on('close', () => {
+    if (!closing && connection && consumerChannel === ch) connection.close().catch(() => {});
+  });
+  await ch.consume(QUEUE, (message) => {
+    if (message) handleDelivery(ch, message, songDeletedHandler);
+  });
+  console.log(`[events] Escuchando ${SONG_DELETED} en ${QUEUE}`);
+}
+
 async function connect() {
   for (let attempt = 1; !closing; attempt += 1) {
     try {
@@ -61,14 +154,25 @@ async function connect() {
       connection.on('close', () => {
         connection = null;
         channel = null;
+        consumerChannel = null;
         if (!closing) {
           console.warn('[events] Conexion con RabbitMQ cerrada; reconectando');
           connect();
         }
       });
       console.log(`[events] Publicando en ${EXCHANGE}/${TYPE}`);
+      if (songDeletedHandler) await startConsumer();
       return;
     } catch (error) {
+      // Si fallo despues de conectar (ej. al declarar la cola), cerrar antes de reintentar.
+      if (connection) {
+        const stale = connection;
+        connection = null;
+        channel = null;
+        consumerChannel = null;
+        stale.removeAllListeners('close');
+        await stale.close().catch(() => {});
+      }
       const delay = Math.min(1000 * attempt, 10000);
       console.warn(`[events] RabbitMQ no disponible (${error.message}); reintento en ${delay} ms`);
       await sleep(delay);
@@ -112,4 +216,7 @@ async function close() {
   if (connection) await connection.close().catch(() => {});
 }
 
-module.exports = { TYPE, buildRoomCreated, connect, publish, isReady, close };
+module.exports = {
+  TYPE, SONG_DELETED, QUEUE, InvalidEvent,
+  buildRoomCreated, parseSongDeleted, handleDelivery, onSongDeleted, connect, publish, isReady, close,
+};

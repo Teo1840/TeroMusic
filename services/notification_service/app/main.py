@@ -11,7 +11,7 @@ from jsonschema.exceptions import ValidationError as SchemaValidationError
 from app.database import SCHEMA, is_transient, open_pool, record_event
 from uuid import UUID
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from app.events import TYPES, parse_event
 
 
@@ -118,12 +118,62 @@ class Notification(BaseModel):
     resource_id: UUID | None
     created_at: datetime
     received_at: datetime
+    read_at: datetime | None = None
+
+
+class Unread(BaseModel):
+    unread: int
+
+
+class MarkRead(BaseModel):
+    # Sin ids (o null): marca todas. Con ids: solo esas (las de otro usuario se ignoran).
+    ids: list[int] | None = Field(default=None, max_length=500)
+
+
+def _check_owner(user_id: UUID, x_user_id: UUID | None) -> None:
+    if x_user_id is not None and x_user_id != user_id:
+        raise HTTPException(status_code=403, detail="Cannot read another user's notifications")
+
+
+async def _unread(user_id: UUID) -> int:
+    return await app.state.pool.fetchval(
+        "SELECT COUNT(*) FROM notifications.history WHERE user_id=$1 AND read_at IS NULL", user_id)
+
+
+@app.get("/notifications/user/{user_id}/unread-count", response_model=Unread)
+async def unread_count(user_id: UUID, x_user_id: UUID | None = Header(default=None)):
+    """Cuántos avisos sin leer tiene el usuario (para el contador del menú)."""
+    _check_owner(user_id, x_user_id)
+    try:
+        return Unread(unread=await _unread(user_id))
+    except Exception:
+        logger.exception("Could not count notifications")
+        raise HTTPException(status_code=503, detail="Database unavailable") from None
+
+
+@app.post("/notifications/user/{user_id}/read", response_model=Unread)
+async def mark_read(user_id: UUID, body: MarkRead | None = None, x_user_id: UUID | None = Header(default=None)):
+    """Marca avisos como leídos y devuelve cuántos quedan sin leer. Repetirlo no
+    cambia nada: un aviso ya leído conserva su read_at original."""
+    _check_owner(user_id, x_user_id)
+    ids = body.ids if body else None
+    try:
+        if ids is None:
+            await app.state.pool.execute(
+                "UPDATE notifications.history SET read_at=NOW() WHERE user_id=$1 AND read_at IS NULL", user_id)
+        elif ids:
+            await app.state.pool.execute(
+                """UPDATE notifications.history SET read_at=NOW()
+                WHERE user_id=$1 AND id=ANY($2::bigint[]) AND read_at IS NULL""", user_id, ids)
+        return Unread(unread=await _unread(user_id))
+    except Exception:
+        logger.exception("Could not mark notifications as read")
+        raise HTTPException(status_code=503, detail="Database unavailable") from None
 
 
 @app.get("/notifications/user/{user_id}", response_model=list[Notification])
 async def user_notifications(user_id: UUID, limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge=0), x_user_id: UUID | None = Header(default=None)):
-    if x_user_id is not None and x_user_id != user_id:
-        raise HTTPException(status_code=403, detail="Cannot read another user's notifications")
+    _check_owner(user_id, x_user_id)
     try:
         rows = await app.state.pool.fetch(
             """SELECT * FROM notifications.history WHERE user_id=$1

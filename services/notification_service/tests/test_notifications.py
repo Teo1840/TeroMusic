@@ -6,7 +6,7 @@ from jsonschema.exceptions import ValidationError
 from app.events import CONTRACTS, TYPES, parse_event
 from app.database import SCHEMA, open_pool, record_event
 from fastapi import HTTPException
-from app.main import app, user_notifications
+from app.main import MarkRead, app, mark_read, unread_count, user_notifications
 
 
 def example(kind):
@@ -102,6 +102,63 @@ class PersistenceTest(unittest.IsolatedAsyncioTestCase):
         await self.save(upload)
         rows = await user_notifications(user, 50, 0, None)
         self.assertEqual({row["type"] for row in rows}, {"room.created.v1", "audio.failed.v1"})
+
+    async def welcome(self, user):
+        event = example("user.registered.v1")
+        event["data"]["user_id"] = str(user)
+        await self.save(event)
+
+    async def room(self, user):
+        event = example("room.created.v1")
+        event["data"]["host_id"] = str(user)
+        await self.save(event)
+
+    async def test_unread_count_and_mark_read(self):
+        user, other = uuid4(), uuid4()
+        await self.welcome(user)
+        await self.room(user)
+        await self.room(other)
+        self.assertEqual((await unread_count(user, None)).unread, 2)
+        rows = await user_notifications(user, 50, 0, None)
+        self.assertTrue(all(row["read_at"] is None for row in rows))
+
+        # Una sola, por id. Un id de otro usuario se ignora.
+        others = await user_notifications(other, 50, 0, None)
+        result = await mark_read(user, MarkRead(ids=[rows[0]["id"], others[0]["id"]]), None)
+        self.assertEqual(result.unread, 1)
+        self.assertEqual((await unread_count(other, None)).unread, 1)
+        first_read = (await user_notifications(user, 50, 0, None))[0]["read_at"]
+        self.assertIsNotNone(first_read)
+
+        # Todas; repetir no cambia el read_at de la que ya estaba leída.
+        self.assertEqual((await mark_read(user, None, None)).unread, 0)
+        self.assertEqual((await mark_read(user, MarkRead(), None)).unread, 0)
+        self.assertEqual((await user_notifications(user, 50, 0, None))[0]["read_at"], first_read)
+        self.assertEqual((await mark_read(user, MarkRead(ids=[]), None)).unread, 0)
+
+        for call in (unread_count(user, other), mark_read(user, None, other)):
+            with self.assertRaises(HTTPException) as denied:
+                await call
+            self.assertEqual(denied.exception.status_code, 403)
+
+    async def test_deleted_account_loses_its_notifications(self):
+        user, other = uuid4(), uuid4()
+        await self.welcome(user)
+        await self.welcome(other)
+        song = uuid4()
+        self.songs.append(song)
+        upload = example("audio.uploaded.v1")
+        upload["data"].update(song_id=str(song), uploaded_by=str(user))
+        await self.save(upload)
+
+        deleted = example("user.deleted.v1")
+        deleted["data"]["user_id"] = str(user)
+        await self.save(deleted)
+        await self.save(deleted)
+        self.assertEqual(await user_notifications(user, 50, 0, None), [])
+        self.assertEqual(len(await user_notifications(other, 50, 0, None)), 1)
+        self.assertIsNone(await self.pool.fetchval(
+            "SELECT user_id FROM notifications.uploads WHERE song_id=$1", song))
 
     async def test_broker_to_http(self):
         import os

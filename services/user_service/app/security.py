@@ -15,6 +15,21 @@ if not SECRET_KEY:
 
 ALGORITHM = "HS256"
 
+# Roles (ver routers/admin.py). Las cuentas de ADMIN_EMAILS (separados por coma)
+# son admin desde que se registran, y al arrancar se promueven si ya existían.
+USER = "user"
+ADMIN = "admin"
+ADMIN_EMAILS = {
+    email.strip().lower()
+    for email in os.getenv("ADMIN_EMAILS", "").split(",")
+    if email.strip()
+}
+
+
+def initial_role(email: str) -> str:
+    return ADMIN if email.lower() in ADMIN_EMAILS else USER
+
+
 ACCESS_TOKEN_EXPIRE_MINUTES = int(
     os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60")
 )
@@ -42,21 +57,33 @@ def verify_password(
     )
 
 
+# Tope de una sesión aunque se renueve: pasado este tiempo desde el login hay
+# que volver a poner la contraseña.
+SESSION_MAX_HOURS = int(
+    os.getenv("SESSION_MAX_HOURS", "168")
+)
+
+
 def create_access_token(
     user_id,
     email: str,
-    role: str
+    role: str,
+    version: int = 0,
+    auth_time: int | None = None
 ) -> str:
+    """JWT de la sesión. auth_time es el momento del login (segundos epoch):
+    se conserva al renovar para respetar SESSION_MAX_HOURS. ver = token_version."""
 
-    expire = (
-        datetime.now(timezone.utc)
-        + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    )
+    now = datetime.now(timezone.utc)
+    expire = now + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
 
     payload = {
         "sub": str(user_id),
         "email": email,
         "role": role,
+        "ver": version,
+        "iat": int(now.timestamp()),
+        "auth_time": auth_time if auth_time is not None else int(now.timestamp()),
         "exp": expire
     }
 
@@ -65,6 +92,21 @@ def create_access_token(
         SECRET_KEY,
         algorithm=ALGORITHM
     )
+
+
+def session_matches(payload: dict, user) -> bool:
+    """El usuario sigue existiendo y el token es de su contraseña actual.
+    Los tokens anteriores a token_version no traen "ver": cuentan como 0."""
+    return user is not None and payload.get("ver", 0) == (user.token_version or 0)
+
+
+def session_expired(payload: dict, now: datetime | None = None) -> bool:
+    """Pasó SESSION_MAX_HOURS desde el login: no se renueva más."""
+    now = now or datetime.now(timezone.utc)
+    started = payload.get("auth_time") or payload.get("iat")
+    if not isinstance(started, (int, float)):
+        return True
+    return now.timestamp() - started > SESSION_MAX_HOURS * 3600
 
 
 def decode_token(token: str) -> dict:
