@@ -10,7 +10,8 @@ import { errorMessage, formatDate, formatMonthYear, initials } from "../lib/form
  *   PATCH /auth/me              → body { display_name } → el perfil actualizado.
  *   GET   /catalog/songs/mine   → canciones propias en cualquier estado.
  *   GET   /catalog/playlists    → [{ id, name, song_count }]
- *   GET   /metrics/songs/{id}   → { song_id, total_plays }  (una por canción publicada)
+ *   POST  /metrics/songs/batch  → body { song_ids } → { songs: [{ song_id, total_plays }] }
+ *                                 (todas las publicadas en un pedido, hasta 500 por pedido)
  *
  * El nombre de artista llega al catálogo por el evento user.profile_updated.v1,
  * así que puede tardar unos segundos en verse en las canciones.
@@ -20,6 +21,8 @@ import { errorMessage, formatDate, formatMonthYear, initials } from "../lib/form
  */
 const MAX_NAME = 64;
 const FAILED = "error";
+// Igual a BATCH_MAX de metrics_service (app/models.py).
+const METRICS_BATCH = 500;
 
 const ROLE_LABEL = { user: "Usuario", admin: "Administrador" };
 
@@ -86,22 +89,33 @@ export default function Profile() {
 async function loadPlays(published) {
     if (published.length === 0) return { total: 0, top: null };
 
-    const results = await Promise.allSettled(
-        published.map((song) => api.get(`/metrics/songs/${song.id}`))
+    // Un pedido cada METRICS_BATCH canciones (normalmente uno solo). Si alguno falla
+    // no se muestra un total incompleto: se marca como no disponible.
+    const chunks = [];
+    for (let i = 0; i < published.length; i += METRICS_BATCH) {
+        chunks.push(published.slice(i, i + METRICS_BATCH).map((song) => song.id));
+    }
+    let responses;
+    try {
+        responses = await Promise.all(
+            chunks.map((song_ids) => api.post("/metrics/songs/batch", { song_ids }))
+        );
+    } catch {
+        return FAILED;
+    }
+    const counts = new Map(
+        responses.flatMap(({ data }) => data.songs.map((s) => [s.song_id, s.total_plays]))
     );
-    // Si metrics no respondió para ninguna, no hay número confiable.
-    if (results.every((r) => r.status === "rejected")) return FAILED;
 
     let total = 0;
     let top = null;
-    results.forEach((r, i) => {
-        if (r.status !== "fulfilled") return;
-        const count = r.value.data?.total_plays ?? 0;
+    for (const song of published) {
+        const count = counts.get(song.id) ?? 0;
         total += count;
         if (count > 0 && (!top || count > top.plays)) {
-            top = { title: published[i].title, plays: count };
+            top = { title: song.title, plays: count };
         }
-    });
+    }
     return { total, top };
 }
 

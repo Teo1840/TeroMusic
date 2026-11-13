@@ -9,7 +9,7 @@ from pydantic import ValidationError
 from jsonschema.exceptions import ValidationError as SchemaValidationError
 
 from app.database import SCHEMA, open_pool, record_play
-from app.models import SongMetrics, TopSongs, TotalPlays
+from app.models import SongMetrics, SongsBatch, TopSongs, TotalPlays
 from app.events import parse_play
 
 
@@ -100,6 +100,24 @@ async def song_metrics(song_id: str = Path(min_length=1, max_length=128, pattern
         logger.exception("Could not read metrics")
         raise HTTPException(status_code=503, detail="Database unavailable") from None
     return SongMetrics(song_id=song_id, total_plays=count or 0)
+
+
+@app.post("/metrics/songs/batch", response_model=TopSongs)
+async def songs_metrics(body: SongsBatch):
+    """Reproducciones de varias canciones en un solo pedido (p. ej. todas las de un
+    artista). Devuelve una entrada por id pedido, en el mismo orden y sin repetidos;
+    las que no tienen reproducciones vienen con 0."""
+    song_ids = list(dict.fromkeys(body.song_ids))
+    try:
+        rows = await app.state.pool.fetch(
+            "SELECT song_id, total_plays FROM analytics.song_metrics WHERE song_id = ANY($1::varchar[])",
+            song_ids,
+        )
+    except Exception:
+        logger.exception("Could not read metrics")
+        raise HTTPException(status_code=503, detail="Database unavailable") from None
+    counts = {row["song_id"]: row["total_plays"] for row in rows}
+    return TopSongs(songs=[SongMetrics(song_id=s, total_plays=counts.get(s, 0)) for s in song_ids])
 
 
 @app.get("/metrics/plays", response_model=TotalPlays)

@@ -8,6 +8,13 @@ docker compose exec -T metrics_service python contracts/validate.py
 docker compose exec -T metrics_service python -m tests.integration
 ```
 
+Tests unitarios (sin Postgres ni RabbitMQ; el pool se simula en tests/test_batch.py):
+
+```
+pip install -r requirements.txt -r requirements-dev.txt
+python -m pytest --ignore=tests/integration.py
+```
+
 Swagger: http://localhost:8004/docs. Puerto configurable con METRICS_PORT.
 Dentro de Docker: http://metrics_service:8000.
 
@@ -21,6 +28,20 @@ GET /metrics/songs/{song_id} devuelve:
 
 Devuelve cero si no hay reproducciones registradas; no verifica la existencia
 en catalogo.
+
+POST /metrics/songs/batch devuelve las reproducciones de varias canciones en un
+solo pedido (el perfil lo usa para todas las canciones de un artista). Body:
+
+```json
+{"song_ids":["c3d4e5f6-1a2b-4c3d-8e9f-0a1b2c3d4e5f","otra"]}
+```
+
+Responde una entrada por id, en el mismo orden y sin repetidos; las que no tienen
+reproducciones vienen con 0. Entre 1 y 500 ids por pedido (fuera de rango, 422).
+
+```json
+{"songs":[{"song_id":"c3d4e5f6-1a2b-4c3d-8e9f-0a1b2c3d4e5f","total_plays":12},{"song_id":"otra","total_plays":0}]}
+```
 
 GET /metrics/plays devuelve el total de reproducciones de todas las canciones:
 

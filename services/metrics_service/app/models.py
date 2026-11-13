@@ -24,3 +24,11 @@ class TotalPlays(BaseModel):
 
 class TopSongs(BaseModel):
     songs: list[SongMetrics]
+
+
+# Tope por pedido: alcanza para el catálogo de un artista y acota la consulta.
+BATCH_MAX = 500
+
+
+class SongsBatch(BaseModel):
+    song_ids: list[Identifier] = Field(min_length=1, max_length=BATCH_MAX)

@@ -25,7 +25,7 @@ Es el único puerto que se abre: el resto de los servicios sigue accesible solo 
 | `/my-songs` | Canciones que subió el usuario, en cualquier estado, con opción de borrar. Espera `GET /songs/mine` y `DELETE /songs/{id}` del catálogo, que todavía no existen: hasta entonces muestra "todavía no disponible" |
 | `/playlists` | Playlists del usuario: crear, buscar y borrar |
 | `/playlists/:playlistId` | Una playlist: renombrar, agregar canciones con el buscador, sacar, reordenar y escuchar |
-| `/profile` | Perfil: cabecera con avatar y fecha de alta, resumen de actividad (canciones, playlists, reproducciones y la más escuchada) y cambio del nombre de artista (`GET/PATCH /auth/me`, `/catalog/songs/mine`, `/catalog/playlists`, `/metrics/songs/{id}`) |
+| `/profile` | Perfil: cabecera con avatar y fecha de alta, resumen de actividad (canciones, playlists, reproducciones y la más escuchada) y cambio del nombre de artista (`GET/PATCH /auth/me`, `/catalog/songs/mine`, `/catalog/playlists`, `POST /metrics/songs/batch`) |
 | `/rooms` | Lista de salas en vivo y creación de salas |
 | `/rooms/:roomId` | Sala en vivo: reproducción sincronizada, cola, sugerencias y buscador de canciones |
 | `/metrics` | Métricas de reproducciones |
