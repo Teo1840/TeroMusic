@@ -1,6 +1,8 @@
 """POST /songs/upload, GET /songs y GET /songs/{id}."""
 import uuid
 
+from sqlalchemy import select
+
 from app import publisher
 from app.config import settings
 from app.models import Song, SongStatus
@@ -92,12 +94,37 @@ def test_archivo_demasiado_grande_413(client, uploads, monkeypatch):
     assert uploads == []
 
 
-def test_si_rabbitmq_falla_responde_503(client, monkeypatch):
+def test_si_rabbitmq_falla_responde_503_y_deshace_la_subida(client, run, monkeypatch, deleted_files):
     async def failing_publish(*args, **kwargs):
-        raise ConnectionError("RabbitMQ caído")
+        raise ConnectionError("amqp://usuario:clave@rabbitmq caído")
 
     monkeypatch.setattr(publisher, "publish", failing_publish)
-    assert upload(client).status_code == 503
+    response = upload(client)
+
+    assert response.status_code == 503
+    # El error interno (que puede traer la URL con la clave) no llega al cliente.
+    assert "clave" not in response.text
+    # No queda una canción en BORRADOR que ningún worker va a procesar.
+    async def all_songs(session):
+        return (await session.execute(select(Song))).scalars().all()
+
+    assert run(all_songs) == []
+    assert len(deleted_files) == 1
+
+
+def test_titulo_vacio_400_sin_subir_nada(client, uploads, published):
+    assert upload(client, title="   ").status_code == 400
+    assert uploads == [] and published == []
+
+
+def test_titulo_largo_422_sin_subir_nada(client, uploads, published):
+    assert upload(client, title="x" * 201).status_code == 422
+    assert uploads == [] and published == []
+
+
+def test_titulo_se_guarda_sin_espacios_de_mas(client, run):
+    song_id = uuid.UUID(upload(client, title="  Mi   tema ").json()["song_id"])
+    assert run(lambda s: s.get(Song, song_id)).title == "Mi tema"
 
 
 def test_lista_solo_las_publicadas(client, run):

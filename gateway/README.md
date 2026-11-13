@@ -41,6 +41,14 @@ Escucha en http://localhost:8080.
 
 Al pasarse, responde `429`. Tamaño máximo de subida: 100 MB.
 
+La IP sale de `X-Forwarded-For`, que manda el proxy del front. Ese proxy **reemplaza** el
+header con la IP real de la conexión ([vite.config.js](../frontend/vite.config.js)) y el
+gateway toma solo la última IP (`real_ip_recursive off`). Antes el proxy agregaba su IP al
+final de lo que mandaba el cliente y nginx seguía hacia la izquierda, así que con una IP
+inventada distinta en cada pedido se salteaba el límite de login. Quien llama directo a
+`localhost:8080` (sin el front) todavía puede elegir su IP, pero eso solo se puede desde la
+misma PC: el gateway no está abierto a la red.
+
 El stream tiene su propio límite, separado del general: ya lo protege la URL firmada que vence,
 y el navegador pide muchos rangos del archivo al adelantar o arrastrar la barra. Las ráfagas
 son amplias porque el catálogo carga varios reproductores a la vez y, con Docker Desktop,

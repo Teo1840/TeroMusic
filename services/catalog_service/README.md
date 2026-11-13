@@ -45,6 +45,13 @@ API en http://localhost:8000/docs. Desde el front, todo pasa por el gateway: `/a
   gateway después de validar el JWT. Sin esa cabecera, el servicio responde `401`.
   Por eso el servicio no se debe exponer sin el gateway delante.
 - El original queda en MinIO como `audio/raw/{song_id}.wav` (o `.mp3`).
+- El título se limpia (espacios de más) y tiene que tener **entre 1 y 200 caracteres**:
+  vacío responde `400` y más largo `422`. Se valida antes de subir nada, así un título
+  inválido no deja archivos huérfanos en MinIO.
+- Si no se puede publicar `audio.uploaded.v1` (RabbitMQ caído), se **deshace la subida**
+  (se borran la fila y el original) y responde `503` para reintentar. Antes la canción quedaba
+  en BORRADOR para siempre, porque ningún worker se enteraba. El detalle del error va al log,
+  no a la respuesta.
 
 ## Ciclo de vida
 
@@ -85,7 +92,8 @@ Tests con pytest. No necesitan Postgres, MinIO ni RabbitMQ: la base es SQLite en
 memoria y MinIO y RabbitMQ están simulados ([tests/conftest.py](tests/conftest.py)).
 
 - `tests/test_upload.py`: subida (202, BORRADOR, evento `audio.uploaded.v1` con sus datos,
-  `.wav` y `.mp3`), el artista sale de `X-User-Id`, errores 400 / 401 / 413 / 503, y que
+  `.wav` y `.mp3`), el artista sale de `X-User-Id`, errores 400 / 401 / 413 / 503, título
+  vacío o largo sin subir nada, si RabbitMQ falla no queda la canción ni el archivo, y que
   `GET /songs` liste solo las PUBLICADO.
 - `tests/test_my_songs.py`: listado propio, autenticación, borrado en todos los estados,
   permisos, reintentos ante fallos de MinIO y limpieza completa de archivos.

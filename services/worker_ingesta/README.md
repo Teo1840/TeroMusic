@@ -41,6 +41,15 @@ El registro de eventos ya procesados es de cada copia (en memoria). Si dos copia
 misma canción, no pasa nada: sobrescriben los mismos archivos en `processed/{song_id}/` y el
 catálogo descarta los eventos repetidos.
 
+## Seguridad: formato de entrada
+
+FFmpeg no adivina el formato del archivo: se fuerza según la extensión (`-f wav` o
+`-f mp3`) y solo puede abrir archivos locales (`-protocol_whitelist file`). Sin esto, un
+`cancion.mp3` que en realidad fuera una playlist HLS (`#EXTM3U` con URLs adentro) haría que el
+worker pidiera esas URLs dentro de la red de Docker (MinIO, catálogo, etc.). Ahora ese archivo
+es un MP3 roto y termina en `CORRUPT_FILE`. Otra extensión da `UNSUPPORTED_FORMAT` sin
+reintento. Los tres pasos (`probe`, `transcode`, `make_waveform`) usan la misma entrada.
+
 ## Errores
 
 - Los errores pasajeros se **reintentan hasta 3 veces** (`MAX_ATTEMPTS`), esperando cada vez más.
@@ -57,12 +66,16 @@ Crea la carpeta `salida_<nombre>/` con `128.mp3`, `320.mp3` y `waveform.json`. N
 
 ## Tests
 
-17 tests con pytest (más uno marcado como falla conocida). Los de FFmpeg generan el audio
+24 tests con pytest (más uno marcado como falla conocida). Los de FFmpeg generan el audio
 dentro del test (un tono de 2 s), así que no hacen falta archivos de ejemplo.
 
 - `tests/test_audio_processor.py`: de `.wav` y de `.mp3` salen 128 y 320 kbps con la duración
   correcta y `waveform.json` con 200 picos entre 0 y 1. Archivo corrupto → `CORRUPT_FILE` sin
-  reintento, sin audio → `UNSUPPORTED_FORMAT`, demasiado largo → `TOO_LONG`.
+  reintento, sin audio → `UNSUPPORTED_FORMAT`, demasiado largo → `TOO_LONG`, y una playlist
+  HLS con extensión `.mp3` no pide URLs (`CORRUPT_FILE`).
+- `tests/test_input_format.py` (no necesita FFmpeg): el formato sale de la extensión, solo se
+  permite el protocolo `file`, otras extensiones dan `UNSUPPORTED_FORMAT` y los tres comandos
+  usan esa entrada.
 - `tests/test_worker.py`: reintentos solo de errores temporales (hasta `max_attempts`), un
   evento repetido no se procesa dos veces, mensajes inválidos a dead-letter, y si no se puede
   publicar el resultado el mensaje vuelve a la cola.

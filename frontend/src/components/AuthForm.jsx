@@ -79,6 +79,9 @@ export default function AuthForm({ title, endpoint, submitLabel, busyLabel, stat
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     className="field"
+                    // Mismo mínimo que user_service (schemas.PASSWORD_MIN); al entrar no se exige.
+                    minLength={endpoint === "/auth/register" ? 8 : undefined}
+                    title={endpoint === "/auth/register" ? "Al menos 8 caracteres" : undefined}
                     required
                 />
 

@@ -8,6 +8,7 @@ from fastapi import (
     status
 )
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..database import get_db
@@ -27,6 +28,8 @@ from ..security import (
 
 
 router = APIRouter()
+
+DUMMY_HASH = hash_password("relleno-para-igualar-tiempos")
 
 
 @router.post(
@@ -61,7 +64,16 @@ def register(
     )
 
     db.add(user)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # Dos registros simultáneos con el mismo email: los dos pasan la consulta
+        # de arriba y el índice único frena al segundo.
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Email already registered"
+        )
     db.refresh(user)
 
     # Se publica después de responder: el alta no espera a RabbitMQ.
@@ -100,16 +112,12 @@ def login(
         .first()
     )
 
-    if not user:
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid credentials"
-        )
+    # Si el email no existe se compara igual contra un hash de relleno: así la
+    # respuesta tarda lo mismo y no revela qué emails están registrados.
+    hashed = user.hashed_password if user else DUMMY_HASH
+    password_ok = verify_password(data.password, hashed)
 
-    if not verify_password(
-        data.password,
-        user.hashed_password
-    ):
+    if not user or not password_ok:
         raise HTTPException(
             status_code=401,
             detail="Invalid credentials"

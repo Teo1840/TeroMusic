@@ -15,6 +15,12 @@ RENDITIONS = [(128, "mp3"), (320, "mp3")]
 MAX_DURATION_SEC = 20 * 60
 WAVEFORM_POINTS = 200
 
+# Formato de entrada según la extensión (catalog_service solo acepta .wav y .mp3).
+# Se fuerza con -f para que FFmpeg no lo adivine por el contenido: un "cancion.mp3"
+# que en realidad es una playlist HLS (#EXTM3U) haría que FFmpeg pida URLs de la
+# red interna (SSRF). -protocol_whitelist file impide abrir cualquier otro protocolo.
+INPUT_FORMATS = {".wav": "wav", ".mp3": "mp3"}
+
 
 class ProcessingError(Exception):
     """Error con el código que exige audio.failed.v1."""
@@ -39,12 +45,20 @@ def _run(cmd: list[str], error_code: str) -> subprocess.CompletedProcess:
     return result
 
 
+def _input(src: Path) -> list[str]:
+    """Argumentos de entrada seguros para ffprobe/ffmpeg."""
+    fmt = INPUT_FORMATS.get(src.suffix.lower())
+    if fmt is None:
+        raise ProcessingError("UNSUPPORTED_FORMAT", f"Formato no soportado: {src.suffix or '(sin extensión)'}")
+    return ["-protocol_whitelist", "file", "-f", fmt, "-i", str(src)]
+
+
 def probe(src: Path) -> float:
     """Valida el archivo y devuelve su duración en segundos."""
     result = _run(
         [
             "ffprobe", "-v", "error", "-print_format", "json",
-            "-show_format", "-show_streams", str(src),
+            "-show_format", "-show_streams", *_input(src),
         ],
         "CORRUPT_FILE",
     )
@@ -68,7 +82,7 @@ def transcode(src: Path, dst: Path, bitrate_kbps: int) -> None:
     _run(
         [
             "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
-            "-i", str(src), "-vn",
+            *_input(src), "-vn",
             "-af", LOUDNORM,
             "-c:a", "libmp3lame", "-b:a", f"{bitrate_kbps}k",
             str(dst),
@@ -81,7 +95,7 @@ def make_waveform(src: Path, dst: Path, points: int = WAVEFORM_POINTS) -> int:
     """Decodifica a mono 8 kHz y guarda `points` picos normalizados (0 a 1)."""
     result = _run(
         [
-            "ffmpeg", "-hide_banner", "-loglevel", "error", "-i", str(src),
+            "ffmpeg", "-hide_banner", "-loglevel", "error", *_input(src),
             "-vn", "-ac", "1", "-ar", "8000", "-f", "s16le", "-",
         ],
         "TRANSCODE_ERROR",
