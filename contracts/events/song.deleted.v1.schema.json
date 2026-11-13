@@ -2,14 +2,14 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "contracts/events/song.deleted.v1.schema.json",
   "title": "song.deleted.v1",
-  "description": "El artista borró una de sus canciones: ya no está en el catálogo ni en las playlists, y sus archivos se borraron de MinIO. Publica: catalog_service. Consume: metrics_service (la saca del top; el historial de reproducciones se conserva).",
+  "description": "El artista (o un admin) borró una canción: ya no está en el catálogo ni en las playlists, y sus archivos se borraron de MinIO. Publica: catalog_service. Consume: metrics_service (la saca del top; el historial de reproducciones se conserva) y rooms_service (la saca de la cola y las sugerencias de las salas abiertas; si estaba sonando, pasa a la siguiente).",
   "type": "object",
   "required": ["song_id", "artist_id", "deleted_by"],
   "additionalProperties": false,
   "properties": {
     "song_id": { "type": "string", "format": "uuid" },
     "artist_id": { "description": "Dueño de la canción.", "type": "string", "format": "uuid" },
-    "deleted_by": { "description": "Usuario que la borró (hoy siempre el dueño).", "type": "string", "format": "uuid" },
+    "deleted_by": { "description": "Usuario que la borró: el dueño o un admin (rol admin de user_service).", "type": "string", "format": "uuid" },
     "title": { "type": "string", "maxLength": 200 }
   }
 }

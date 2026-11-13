@@ -65,6 +65,13 @@ tiene su README con mas detalle.
 | notification_service | Notificaciones | http://localhost:8005/docs | [notification_service](services/notification_service/README.md) |
 | rooms_service | Salas en vivo | http://localhost:8006 | [rooms_service](services/rooms_service/README.md) |
 
+## Roles
+
+Hay dos roles de plataforma: `user` (todos al registrarse) y `admin`. El primer admin se
+define con `ADMIN_EMAILS` en `.env`; después se administran desde la página `/admin` del front.
+Un admin ve todas las cuentas y cambia roles, borra canciones de cualquiera y cierra cualquier
+sala. Ver [user_service](services/user_service/README.md#roles-y-administración).
+
 ## Eventos y metricas
 
 Los contratos del equipo estan en `contracts/README.md`.
@@ -97,15 +104,17 @@ Revisión de noviembre de 2026. Lo corregido está explicado en el README de cad
 | Si RabbitMQ fallaba al subir, la canción quedaba en BORRADOR para siempre (y el 503 mostraba el error interno) | Bug | Se deshace la subida; el detalle va al log | [catalog_service](services/catalog_service/README.md#subir-una-canción) |
 | Un título de más de 200 caracteres daba `500` y dejaba el archivo en MinIO | Bug | Se valida el título antes de subir | [catalog_service](services/catalog_service/README.md#subir-una-canción) |
 | Dos registros simultáneos con el mismo email daban `500` | Bug | Responde `409` | [user_service](services/user_service/README.md#contraseñas-y-login) |
+| CORS aceptaba cualquier `Origin` con `Allow-Credentials` | Bajo | Solo el front local, sin credenciales | [gateway](gateway/README.md#cors) |
+| `/api/v1/auth/docs` y `/openapi.json` se veían por el gateway | Bajo | `404` en el gateway (siguen en `localhost:8011/docs`) | [gateway](gateway/README.md#rutas) |
+| `GET /songs` y `GET /songs/{id}` mostraban `file_uri` y renditions, y borradores ajenos con su error | Bajo | Sin rutas internas por el gateway; lo no publicado, solo para dueño y admins | [catalog_service](services/catalog_service/README.md#quién-ve-qué) |
+| Las reproducciones se podían inflar repitiendo `POST /audio/played` | Medio | Tiempos coherentes, mínimo 30 s y sin superponer reproducciones del mismo usuario | [audio_service](services/audio_service/README.md#que-no-se-pueda-inflar-el-contador-srcplaysjs) |
+| Varios entrando a la vez pasaban el tope de oyentes de una sala | Bug | Contar y anotarse con el candado de la sala | [rooms_service](services/rooms_service/README.md#roles) |
+| Sin `.env` el Compose arrancaba con `JWT_SECRET` vacío y catálogo sin credenciales | Bug | `JWT_SECRET` obligatorio con mensaje claro; el resto con valores por defecto | [docker-compose.yml](docker-compose.yml) |
 
-Pendiente (riesgo bajo en este entorno local):
+Pendiente:
 
-- **CORS:** el gateway acepta cualquier `Origin` con `Allow-Credentials`. Como el token va en
-  `Authorization` y no en cookies, hoy no expone datos, pero conviene limitarlo al front.
-- **Docs abiertos:** `/api/v1/auth/docs` y `/openapi.json` de user_service se ven por el gateway.
-- **Canciones ajenas:** `GET /songs/{id}` devuelve canciones de otros en BORRADOR o FALLIDO,
-  con `error_message` y la ruta interna `file_uri`.
-- **Salas:** el tope de oyentes se chequea antes de agregar al oyente; si entran varios a la
-  vez, la sala puede pasarse por poco.
 - **`JWT_SECRET`:** usar 32 caracteres aleatorios o más (`openssl rand -hex 32`). Con el valor
-  de `.env.example` cualquiera puede firmar tokens válidos.
+  de `.env.example` cualquiera puede firmar tokens válidos. El Compose ya no arranca sin él.
+- **Servicios internos que confían en el gateway:** catalog_service y rooms_service leen
+  `X-User-Id` / `X-User-Role` sin verificar el token. Es seguro porque sus puertos solo se
+  publican en `127.0.0.1`; en un despliegue real no deben quedar accesibles por fuera del gateway.

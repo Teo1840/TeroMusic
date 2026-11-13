@@ -17,6 +17,7 @@ const playback = require('./playback');
  *   room:{id}:lock       candado para que dos comandos no se pisen (aunque vengan de otra copia)
  *   room:{id}:conns      HASH conexion → { user_id, name, instance }
  *   rooms:public         ZSET de salas publicas (por fecha de creacion)
+ *                        (las privadas no tienen indice: roomIds() las encuentra con SCAN)
  *   rooms:instance:{id}  marca de vida de cada copia del servicio (TTL)
  *   canal rooms:events   pub/sub: cambios que cada copia reenvia a sus WebSockets
  */
@@ -174,6 +175,25 @@ async function listPublic(limit = 50) {
   return rooms.filter(Boolean).map((raw) => JSON.parse(raw));
 }
 
+/**
+ * Ids de todas las salas abiertas (publicas y privadas). Recorre las claves con SCAN,
+ * que no bloquea Redis aunque haya muchas. Solo lo usa song.deleted.v1 (poco frecuente).
+ */
+async function roomIds() {
+  const ids = new Set();
+  let cursor = '0';
+  do {
+    // eslint-disable-next-line no-await-in-loop
+    const [next, keys] = await redis.scan(cursor, 'MATCH', 'room:*', 'COUNT', 500);
+    cursor = next;
+    for (const k of keys) {
+      const match = /^room:([0-9a-f-]{36})$/i.exec(k);
+      if (match) ids.add(match[1]);
+    }
+  } while (cursor !== '0');
+  return [...ids];
+}
+
 /** Avisa a todas las copias del servicio (y estas a sus WebSockets). */
 const publish = (roomId, payload) => redis.publish(CHANNEL, JSON.stringify({ room_id: roomId, payload }));
 
@@ -195,5 +215,5 @@ module.exports = {
   instanceId, connect, close, isReady,
   createRoom, deleteRoom, getRoom, getPlayback, setPlayback, getQueue, getSuggestions, saveChanges, withLock,
   getCohosts, addCohost, removeCohost,
-  addConn, removeConn, listeners, listPublic, touch, publish, subscribe,
+  addConn, removeConn, listeners, listPublic, roomIds, touch, publish, subscribe,
 };

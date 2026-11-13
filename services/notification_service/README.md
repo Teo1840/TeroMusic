@@ -49,6 +49,16 @@ Devuelve un array JSON de objetos con `id`, `event_id`, `user_id`, `type`,
 `message`, `resource_id`, `created_at` y `received_at`. Fechas ISO 8601 UTC.
 Orden: fecha del evento descendente, luego id descendente. Sin historial: `[]`.
 `limit`: 1 a 100; `offset`: >= 0; UUID invalido: 422; BD no disponible: 503.
+Cada aviso trae `read_at` (`null` = sin leer).
+
+`GET /notifications/user/{user_id}/unread-count` → `{ "unread": 3 }` (el contador del menú).
+
+`POST /notifications/user/{user_id}/read` con `{ "ids": [12, 13] }` marca esos avisos; sin `ids`
+(o sin body) marca todos. Devuelve `{ "unread": n }`. Los ids de otro usuario se ignoran y un
+aviso ya leído conserva su `read_at`.
+
+Con `user.deleted.v1` se borran los avisos del usuario y sus filas en `notifications.uploads`.
+
 `GET /health`: comprueba PostgreSQL y RabbitMQ.
 
 El endpoint es interno, sin autenticacion propia, igual que metricas. El gateway

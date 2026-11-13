@@ -15,7 +15,8 @@ Escucha en http://localhost:8080.
 
 | Ruta | Va a | ¿Pide login? |
 |---|---|---|
-| `/api/v1/auth/...` | user_service | No |
+| `/api/v1/auth/...` | user_service | No (user_service valida el JWT en `/me` y `/admin`) |
+| `/api/v1/auth/docs`, `/redoc`, `/openapi.json` | — | `404`: la documentación no se publica |
 | `/api/v1/catalog/...` | catalog_service | Sí |
 | `/api/v1/audio/...` | audio_service | Sí |
 | `/api/v1/audio/stream/...` | audio_service | No: usa una URL firmada que vence |
@@ -28,7 +29,23 @@ Escucha en http://localhost:8080.
 
 1. Antes de pasar el pedido, consulta `user_service /verify` con el `Authorization` que mandó el cliente.
 2. Si el token es válido, agrega `X-User-Id` y `X-User-Role` al pedido. Si no, responde `401`.
+   Esos headers se **pisan** siempre: si el cliente manda un `X-User-Role: admin` inventado, no llega.
+   El rol lo lee user_service de su base en cada pedido (un cambio de rol vale al instante).
 3. También agrega `X-Correlation-Id` para seguir el pedido en los eventos.
+
+## CORS
+
+El front no lo necesita: llama a `/api/v1` por el proxy de Vite, desde su mismo origen. Para
+llamadas desde otro origen, solo se acepta `http(s)://localhost:5173` y `127.0.0.1:5173`
+(`map $cors_origin` en [nginx.conf](nginx.conf)); a cualquier otro `Origin` no se le manda
+`Access-Control-Allow-Origin` y el navegador bloquea la respuesta. Sin `Allow-Credentials`: el
+login va en el header `Authorization`, no en cookies. El preflight `OPTIONS` se contesta `204`
+antes de validar el login.
+
+Los headers de CORS están en [cors.conf](cors.conf) y los comunes de proxy (`Host`,
+`X-Forwarded-*`, `X-Correlation-Id`) en [proxy_headers.conf](proxy_headers.conf). Cada
+`location` hace `include` de los dos: en nginx, una location con su propio `add_header` o
+`proxy_set_header` no hereda los del bloque `server`.
 
 ## Límites de pedidos (por IP)
 
@@ -36,7 +53,7 @@ Escucha en http://localhost:8080.
 |---|---|
 | Cualquier pedido | 20 por segundo (ráfagas de 100) |
 | Stream de audio (`/audio/stream/`) | 50 por segundo (ráfagas de 200) |
-| Login y registro | 30 por minuto |
+| Login, registro, cambio de contraseña y borrar la cuenta | 30 por minuto |
 | Subir canciones | 6 por minuto |
 
 Al pasarse, responde `429`. Tamaño máximo de subida: 100 MB.

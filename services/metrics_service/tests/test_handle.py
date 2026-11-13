@@ -40,8 +40,15 @@ class FakeMessage:
 
 
 class ParseTest(unittest.TestCase):
-    def test_consume_los_tres_eventos_del_contrato(self):
-        self.assertEqual(set(TYPES), {"song.played.v1", "song.deleted.v1", "user.registered.v1", "room.created.v1"})
+    def test_consume_los_eventos_del_contrato(self):
+        self.assertEqual(set(TYPES), {"song.played.v1", "song.deleted.v1", "user.registered.v1",
+                                      "room.created.v1", "user.deleted.v1"})
+
+    def test_cuenta_borrada_se_cuenta_por_usuario(self):
+        deleted = parse_event(json.dumps(example("user.deleted.v1")).encode(), "user.deleted.v1")
+        self.assertIsInstance(deleted, DomainEvent)
+        self.assertEqual(deleted.type, "user.deleted.v1")
+        self.assertEqual(deleted.subject_id, "5a1e2f30-8c4b-4f9d-a7e6-1b2c3d4e5f60")
 
     def test_registro_y_sala_se_cuentan_por_usuario_y_por_sala(self):
         user = parse_event(json.dumps(example("user.registered.v1")).encode(), "user.registered.v1")

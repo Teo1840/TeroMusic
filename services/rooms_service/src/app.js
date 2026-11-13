@@ -110,12 +110,20 @@ function createApp({ store, events, now = Date.now }) {
     }
   });
 
-  /** Cerrar sala: solo el anfitrion. Desconecta a todos. */
+  /**
+   * Cerrar sala: el anfitrion o un admin. Desconecta a todos.
+   * El rol lo pone el gateway en X-User-Role (user_service lo lee de su base: un cambio
+   * de rol vale al instante). Este servicio solo se publica en 127.0.0.1.
+   */
   app.delete('/rooms/:roomId', requireUser, validId, async (req, res, next) => {
     try {
       const room = await store.getRoom(req.params.roomId);
       if (!room) return res.status(404).json({ detail: 'Sala no encontrada' });
-      if (room.host_id !== req.user.id) return res.status(403).json({ detail: 'Solo el anfitrion puede cerrar la sala' });
+      const isAdmin = req.get('X-User-Role') === 'admin';
+      if (room.host_id !== req.user.id && !isAdmin) {
+        return res.status(403).json({ detail: 'Solo el anfitrion (o un admin) puede cerrar la sala' });
+      }
+      if (room.host_id !== req.user.id) console.log(`[rooms] Admin ${req.user.id} cierra la sala ${room.id}`);
       await store.deleteRoom(room.id);
       await store.publish(room.id, { type: 'closed' });
       return res.status(204).end();

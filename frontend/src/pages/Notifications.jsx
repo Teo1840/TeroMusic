@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import api from "../api/client";
 import { currentUserId } from "../lib/auth";
 import { errorMessage } from "../lib/format";
+import { markRead } from "../lib/notifications";
 
 const POLL_MS = 10000;
 const PAGE_SIZE = 20;
@@ -10,8 +11,10 @@ const PAGE_SIZE = 20;
 /*
  * Historial de avisos del usuario, según notification_service:
  *   GET /notifications/user/{user_id}?limit&offset
- *     → [{ id, type, message, resource_id, created_at }]  del más nuevo al más viejo
+ *     → [{ id, type, message, resource_id, created_at, read_at }]  del más nuevo al más viejo
+ *   POST /notifications/user/{user_id}/read  → body { ids } (sin ids: todas) → { unread }
  * El gateway pone X-User-Id con el usuario del JWT: pedir los de otro da 403.
+ * read_at null = sin leer. Abrir el link de un aviso también lo marca como leído.
  */
 
 const KIND = {
@@ -48,6 +51,7 @@ export default function Notifications() {
     const [error, setError] = useState("");
     const [hasMore, setHasMore] = useState(false);
     const [loadingMore, setLoadingMore] = useState(false);
+    const [marking, setMarking] = useState(false);
 
     const userId = currentUserId();
 
@@ -107,10 +111,35 @@ export default function Notifications() {
         }
     }
 
+    const unreadCount = items.filter((n) => !n.read_at).length;
+
+    /** Marca como leídos (ids, o todos) y actualiza la lista sin esperar al polling. */
+    async function read(ids) {
+        const now = new Date().toISOString();
+        const target = ids ? new Set(ids) : null;
+        setMarking(true);
+        try {
+            await markRead(ids);
+            setItems((prev) => prev.map((n) => (!n.read_at && (!target || target.has(n.id)) ? { ...n, read_at: now } : n)));
+            setError("");
+        } catch (err) {
+            setError(errorMessage(err, "No se pudieron marcar como leídas."));
+        } finally {
+            setMarking(false);
+        }
+    }
+
     return (
         <div className="page max-w-3xl">
 
-            <h1 className="page-title">Notificaciones</h1>
+            <div className="flex flex-wrap items-end justify-between gap-3">
+                <h1 className="page-title">Notificaciones</h1>
+                {unreadCount > 0 && (
+                    <button type="button" className="btn py-1 text-sm" onClick={() => read()} disabled={marking}>
+                        Marcar todas como leídas
+                    </button>
+                )}
+            </div>
             <p className="muted mt-2 mb-6">
                 Avisos de la plataforma: tu bienvenida, cuando una canción que subiste está lista
                 (o no se pudo procesar) y las salas que creaste.
@@ -128,19 +157,49 @@ export default function Notifications() {
                 <ul className="space-y-3">
                     {items.map((notification) => {
                         const link = linkFor(notification);
+                        const unread = !notification.read_at;
                         return (
-                            <li key={notification.id} className="card">
+                            <li
+                                key={notification.id}
+                                className={`card ${unread ? "border-l-4" : "opacity-80"}`}
+                                data-unread={unread || undefined}
+                            >
                                 <div className="flex flex-wrap items-baseline justify-between gap-x-4">
-                                    <p className="text-sm font-semibold">{KIND[notification.type] ?? "Aviso"}</p>
+                                    <p className="text-sm font-semibold">
+                                        {KIND[notification.type] ?? "Aviso"}
+                                        {unread && (
+                                            <span className="ml-2 inline-block bg-black text-white text-xs px-1.5 py-0.5 align-middle">
+                                                Nuevo
+                                            </span>
+                                        )}
+                                    </p>
                                     <time className="muted text-sm" dateTime={notification.created_at}>
                                         {formatWhen(notification.created_at)}
                                     </time>
                                 </div>
-                                <p className="mt-1 break-words">{notification.message}</p>
-                                {link && (
-                                    <Link to={link.to} className="inline-block mt-2 text-sm underline">
-                                        {link.label}
-                                    </Link>
+                                <p className={`mt-1 break-words ${unread ? "font-medium" : ""}`}>{notification.message}</p>
+                                {(link || unread) && (
+                                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-sm">
+                                        {link && (
+                                            <Link
+                                                to={link.to}
+                                                className="underline"
+                                                onClick={() => unread && read([notification.id]).catch(() => {})}
+                                            >
+                                                {link.label}
+                                            </Link>
+                                        )}
+                                        {unread && (
+                                            <button
+                                                type="button"
+                                                className="link"
+                                                onClick={() => read([notification.id])}
+                                                disabled={marking}
+                                            >
+                                                Marcar como leída
+                                            </button>
+                                        )}
+                                    </div>
                                 )}
                             </li>
                         );

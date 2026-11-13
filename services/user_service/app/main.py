@@ -9,8 +9,10 @@ from sqlalchemy import text
 from .database import Base, SessionLocal, engine
 from .events import PROFILE_UPDATED, profile_data, publish, username_from_email
 from .models import User
+from .routers.admin import router as admin_router
 from .routers.auth import router as auth_router
 from .routers.profile import router as profile_router
+from .security import ADMIN_EMAILS
 
 
 logging.basicConfig(level=logging.INFO)
@@ -23,6 +25,16 @@ Base.metadata.create_all(bind=engine)
 with engine.begin() as conn:
     conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name VARCHAR(64)"))
     conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_updated_at TIMESTAMPTZ"))
+    # Primer administrador: las cuentas de ADMIN_EMAILS que ya existían pasan a admin.
+    # Solo promueve: sacar un email de la lista no le quita el rol a nadie.
+    if ADMIN_EMAILS:
+        promoted = conn.execute(
+            text("UPDATE users SET role = 'admin' WHERE lower(email) = ANY(:emails) AND role <> 'admin'"),
+            {"emails": sorted(ADMIN_EMAILS)},
+        ).rowcount
+        if promoted:
+            log.info("%d cuenta(s) de ADMIN_EMAILS pasaron a admin", promoted)
+    conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 0"))
 
 
 BACKFILL_ROUNDS = 30
@@ -81,6 +93,10 @@ app.include_router(
 
 app.include_router(
     profile_router
+)
+
+app.include_router(
+    admin_router
 )
 
 

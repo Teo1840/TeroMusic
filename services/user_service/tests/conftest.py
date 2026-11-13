@@ -16,6 +16,7 @@ from sqlalchemy.pool import StaticPool  # noqa: E402
 
 from app.database import Base, get_db  # noqa: E402
 from app.routers import auth as auth_router  # noqa: E402
+from app.routers import profile as profile_router  # noqa: E402
 
 
 @pytest.fixture
@@ -29,6 +30,7 @@ def session_maker():
 def published(monkeypatch):
     events = []
     monkeypatch.setattr(auth_router, "publish", lambda *args, **kwargs: events.append(args))
+    monkeypatch.setattr(profile_router, "publish", lambda *args, **kwargs: events.append(args))
     return events
 
 
@@ -36,6 +38,7 @@ def published(monkeypatch):
 def client(session_maker, published):
     app = FastAPI()
     app.include_router(auth_router.router)
+    app.include_router(profile_router.router)
 
     def override():
         db = session_maker()

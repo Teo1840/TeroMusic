@@ -8,8 +8,15 @@ from fastapi import FastAPI, HTTPException, Path, Query
 from pydantic import ValidationError
 from jsonschema.exceptions import ValidationError as SchemaValidationError
 
-from app.database import SCHEMA, forget_song, is_transient, open_pool, record_event, record_play
-from app.models import SongDeleted, SongMetrics, SongPlayed, SongsBatch, Summary, TopSongs, TotalPlays
+import asyncpg
+
+from app.database import (
+    SCHEMA, daily_plays, forget_song, is_transient, open_pool, record_event, record_play, trending,
+)
+from app.models import (
+    DAYS_MAX, TZ_PATTERN, DailyPlays, DayPlays, SongDeleted, SongMetrics, SongPlayed, SongsBatch,
+    SongsDaily, Summary, TopSongs, TotalPlays, Trending, TrendingSong,
+)
 from app.events import TYPES, parse_event
 
 
@@ -173,13 +180,17 @@ async def top_songs(limit: int = Query(default=10, ge=1, le=100)):
 
 @app.get("/metrics/summary", response_model=Summary)
 async def summary():
-    """Totales globales: reproducciones, usuarios registrados y salas creadas."""
+    """Totales globales: reproducciones, usuarios registrados (sin los que borraron
+    su cuenta) y salas creadas."""
     try:
         row = await app.state.pool.fetchrow(
             """SELECT
                  (SELECT COUNT(*) FROM analytics.play_events) AS plays,
-                 (SELECT COUNT(DISTINCT subject_id) FROM analytics.domain_events
-                   WHERE type = 'user.registered.v1') AS users,
+                 (SELECT COUNT(DISTINCT r.subject_id) FROM analytics.domain_events r
+                   WHERE r.type = 'user.registered.v1'
+                     AND NOT EXISTS (SELECT 1 FROM analytics.domain_events d
+                                     WHERE d.type = 'user.deleted.v1' AND d.subject_id = r.subject_id)
+                 ) AS users,
                  (SELECT COUNT(DISTINCT subject_id) FROM analytics.domain_events
                    WHERE type = 'room.created.v1') AS rooms""",
         )
@@ -187,3 +198,54 @@ async def summary():
         logger.exception("Could not read metrics")
         raise HTTPException(status_code=503, detail="Database unavailable") from None
     return Summary(**dict(row))
+
+
+async def _daily(days: int, tz: str, song_ids: list[str] | None) -> DailyPlays:
+    try:
+        rows = await daily_plays(app.state.pool, days, tz, song_ids)
+    except asyncpg.InvalidParameterValueError:
+        # PostgreSQL no conoce esa zona horaria.
+        raise HTTPException(status_code=422, detail="Zona horaria desconocida") from None
+    except Exception:
+        logger.exception("Could not read metrics")
+        raise HTTPException(status_code=503, detail="Database unavailable") from None
+    series = [DayPlays(date=row["day"], plays=row["plays"]) for row in rows]
+    return DailyPlays(days=series, total=sum(d.plays for d in series), tz=tz)
+
+
+@app.get("/metrics/plays/daily", response_model=DailyPlays)
+async def plays_per_day(
+    days: int = Query(default=30, ge=1, le=DAYS_MAX),
+    tz: str = Query(default="UTC", max_length=64, pattern=TZ_PATTERN),
+    song_id: str | None = Query(default=None, min_length=1, max_length=128, pattern=r"^\S+$"),
+):
+    """Reproducciones por día de toda la plataforma (o de una canción con ?song_id).
+    Los días se cortan en la zona horaria tz (p. ej. America/Argentina/Buenos_Aires).
+    Incluye las reproducciones de canciones borradas: son escuchas que existieron."""
+    return await _daily(days, tz, [song_id] if song_id else None)
+
+
+@app.post("/metrics/songs/daily", response_model=DailyPlays)
+async def songs_per_day(body: SongsDaily):
+    """Reproducciones por día sumando varias canciones (p. ej. todas las de un artista)."""
+    return await _daily(body.days, body.tz, list(dict.fromkeys(body.song_ids)))
+
+
+@app.get("/metrics/trending", response_model=Trending)
+async def trending_songs(
+    days: int = Query(default=7, ge=1, le=90),
+    limit: int = Query(default=10, ge=1, le=100),
+):
+    """Las más escuchadas en los últimos `days` días, con cuántas tuvieron en los
+    `days` anteriores (para ver si suben o bajan), y los totales de las dos ventanas."""
+    try:
+        totals, rows = await trending(app.state.pool, days, limit)
+    except Exception:
+        logger.exception("Could not read metrics")
+        raise HTTPException(status_code=503, detail="Database unavailable") from None
+    return Trending(
+        days=days,
+        plays=totals["plays"],
+        previous_plays=totals["previous_plays"],
+        songs=[TrendingSong(**dict(row)) for row in rows],
+    )

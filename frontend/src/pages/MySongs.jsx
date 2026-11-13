@@ -7,14 +7,14 @@ import { errorMessage, filterByTitle, formatTime } from "../lib/format";
 const POLL_MS = 3000;
 
 /*
- * Lo que esta página espera de catalog_service (a cargo del Integrante 2):
+ * Lo que usa de catalog_service:
  *
  *   GET    /songs/mine   → canciones del usuario del JWT, en cualquier estado:
  *                          [{ id, title, status, duration, error_message }]
- *                          (declararla antes de /songs/{song_id}, si no "mine" se lee como id)
  *   DELETE /songs/{id}   → 204. 403 si la canción es de otro, 404 si no existe.
+ *                          Al borrar se publica song.deleted.v1 (métricas y salas).
  *
- * Mientras no existan, el catálogo responde 422 (a "mine") o 405 (al DELETE):
+ * Si el catálogo desplegado es una versión vieja sin estas rutas, responde 422 o 405:
  * la página lo muestra como "todavía no disponible" en vez de un error.
  */
 const NOT_READY = [404, 405, 422];

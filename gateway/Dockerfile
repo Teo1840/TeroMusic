@@ -11,6 +11,6 @@ RUN apk add --no-cache openssl \
         -addext "subjectAltName=DNS:localhost,DNS:gateway,IP:127.0.0.1" \
     && chmod 600 /etc/nginx/certs/gateway.key
 
-COPY nginx.conf /etc/nginx/nginx.conf
+COPY nginx.conf cors.conf proxy_headers.conf /etc/nginx/
 
 EXPOSE 80 443

@@ -30,6 +30,10 @@ class Song(Base):
     renditions: Mapped[list | None] = mapped_column(JSON, nullable=True)
     error_code: Mapped[str | None] = mapped_column(String(50), nullable=True)
     error_message: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    # Momento de la subida (para ordenar por "más nuevas"). NULL en canciones viejas.
+    created_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=lambda: datetime.now(timezone.utc)
+    )
 
 
 class ProcessedEvent(Base):

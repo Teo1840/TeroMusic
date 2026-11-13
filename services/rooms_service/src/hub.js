@@ -193,24 +193,46 @@ class Hub {
       return;
     }
 
-    const room = await this.store.getRoom(roomId);
-    if (!room) {
+    // Contar oyentes y anotarse va con la sala bloqueada: si no, varios que entran a la
+    // vez ven todos "hay lugar" y la sala se pasa del tope (aunque vengan por otra copia).
+    const connId = randomUUID();
+    let verdict;
+    try {
+      verdict = await this.store.withLock(roomId, async () => {
+        const room = await this.store.getRoom(roomId);
+        if (!room) return 'not_found';
+        const present = await this.store.listeners(roomId);
+        const already = present.some((l) => l.user_id === user.id);
+        if (!already && present.length >= room.max_listeners) return 'full';
+        await this.store.addConn(roomId, connId, user);
+        return 'ok';
+      });
+    } catch (error) {
+      console.warn(`[hub] ${roomId}: no se pudo entrar: ${error.message}`);
+      ws.close(1013, 'Sala ocupada, intenta de nuevo');
+      return;
+    }
+    if (verdict === 'not_found') {
       ws.close(CLOSE.NOT_FOUND, 'La sala no existe');
       return;
     }
-    const present = await this.store.listeners(roomId);
-    const already = present.some((l) => l.user_id === user.id);
-    if (!already && present.length >= room.max_listeners) {
+    if (verdict === 'full') {
       ws.close(CLOSE.FULL, 'La sala esta llena');
       return;
     }
 
     clearTimeout(authTimer);
     ws.user = user;
-    ws.connId = randomUUID();
+    ws.connId = connId;
     if (!this.rooms.has(roomId)) this.rooms.set(roomId, new Set());
     this.rooms.get(roomId).add(ws);
-    await this.store.addConn(roomId, ws.connId, user);
+    // Si el socket se cerro mientras esperaba el candado, el 'close' ya paso sin connId:
+    // se borra la conexion anotada para que no ocupe lugar.
+    if (ws.readyState !== ws.OPEN) {
+      this.rooms.get(roomId).delete(ws);
+      await this.store.removeConn(roomId, connId);
+      return;
+    }
 
     send(ws, { type: 'welcome', user: { user_id: user.id, name: user.name }, server_time: this.now() });
     await this.broadcastState(roomId);

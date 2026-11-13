@@ -39,3 +39,17 @@ export function hasValidToken() {
     const payload = token && tokenPayload(token);
     return Boolean(payload?.exp) && payload.exp * 1000 > Date.now();
 }
+
+/** Rol del usuario logueado ("user" o "admin"), o null si no hay sesión. Solo para mostrar
+ *  u ocultar cosas: lo que se permite lo decide el backend con el rol de la base. */
+export function currentRole() {
+    const token = getToken();
+    return (token && tokenPayload(token)?.role) || null;
+}
+
+/** Milisegundos hasta que vence el token (negativo si ya venció), o null si no hay. */
+export function msUntilExpiry() {
+    const token = getToken();
+    const exp = token && tokenPayload(token)?.exp;
+    return exp ? exp * 1000 - Date.now() : null;
+}

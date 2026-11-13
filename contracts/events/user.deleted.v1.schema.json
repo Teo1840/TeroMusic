@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "contracts/events/user.deleted.v1.schema.json",
+  "title": "user.deleted.v1",
+  "description": "Un usuario borró su cuenta. Publica: user_service. Consumen: catalog_service (borra sus canciones, playlists y su perfil de artista), notification_service (borra sus avisos) y metrics_service (deja de contarlo como usuario). Las reproducciones que hizo quedan en el historial de métricas.",
+  "type": "object",
+  "required": ["user_id", "deleted_at"],
+  "additionalProperties": false,
+  "properties": {
+    "user_id": { "type": "string", "format": "uuid" },
+    "deleted_at": { "type": "string", "format": "date-time" }
+  }
+}

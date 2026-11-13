@@ -5,6 +5,7 @@ const cache = require('./cache');
 const catalog = require('./catalog');
 const config = require('./config');
 const events = require('./events');
+const plays = require('./plays');
 const signed = require('./signed');
 const storage = require('./storage');
 const { parseRange, chunksFor, RangeNotSatisfiable } = require('./range');
@@ -168,7 +169,9 @@ app.get('/audio/waveform/:songId', async (req, res, next) => {
 /**
  * El front lo llama cuando la reproduccion termina o se abandona.
  * Body: { song_id, started_at, listened_sec, completed?, bitrate_kbps?, client?, room_id? }
- * user_id sale del JWT. Responde 202 cuando RabbitMQ confirmo el evento.
+ * user_id sale del JWT. Responde 202 cuando RabbitMQ confirmo el evento, 200 { counted: false }
+ * si no cuenta (menos de PLAY_MIN_SEC o superpuesta con otra del mismo usuario) y 400 si los
+ * tiempos son imposibles. Reglas en plays.js.
  */
 app.post('/audio/played', express.json({ limit: '4kb' }), async (req, res, next) => {
   let userId;
@@ -192,11 +195,26 @@ app.post('/audio/played', express.json({ limit: '4kb' }), async (req, res, next)
   }
 
   try {
+    plays.checkTimes(body, Date.now());
+  } catch (error) {
+    return res.status(400).json({ detail: error.message });
+  }
+
+  try {
     const song = await publishedSong(body.song_id, res);
     if (!song) return undefined;
+    let verdict;
+    try {
+      verdict = await plays.evaluate(userId, body, song);
+    } catch (error) {
+      if (!(error instanceof plays.InvalidPlay)) throw error;
+      return res.status(400).json({ detail: error.message });
+    }
+    // Aceptada pero sin contar (muy corta o superpuesta con otra): no hay evento.
+    if (!verdict.counted) return res.status(200).json({ counted: false, reason: verdict.reason });
     await events.publish(event);
     console.log(`[events] ${events.TYPE} song_id=${body.song_id} listened_sec=${body.listened_sec} id=${event.id}`);
-    return res.status(202).json({ id: event.id });
+    return res.status(202).json({ id: event.id, counted: true });
   } catch (error) {
     return next(error);
   }

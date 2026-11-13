@@ -13,7 +13,10 @@
 class CommandError extends Error {}
 
 function initial() {
-  return { song_id: null, title: null, duration_sec: null, playing: false, position_ms: 0, updated_at_ms: 0 };
+  return {
+    song_id: null, title: null, artist_id: null, artist_name: null,
+    duration_sec: null, playing: false, position_ms: 0, updated_at_ms: 0,
+  };
 }
 
 /** Posicion en milisegundos en el instante `now` (nunca pasa del final de la cancion). */
@@ -59,6 +62,8 @@ function setSong(song, now, startDelayMs) {
   return {
     song_id: song.id,
     title: song.title ?? null,
+    artist_id: song.artist_id ?? null,
+    artist_name: song.artist_name ?? null,
     duration_sec: typeof song.duration === 'number' ? song.duration : null,
     playing: true,
     position_ms: 0,

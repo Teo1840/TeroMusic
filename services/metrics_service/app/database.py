@@ -29,6 +29,9 @@ CREATE TABLE IF NOT EXISTS analytics.domain_events (
     received_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS domain_events_type ON analytics.domain_events(type, subject_id);
+-- Series por día y tendencias: filtran play_events por fecha (y por canción).
+CREATE INDEX IF NOT EXISTS play_events_played_at ON analytics.play_events(played_at);
+CREATE INDEX IF NOT EXISTS play_events_song_played_at ON analytics.play_events(song_id, played_at);
 """
 
 # Errores que se arreglan solos (la base se reinicia, se cortó la conexión, no hay
@@ -95,3 +98,69 @@ async def forget_song(pool, event: SongDeleted):
     con 1: es una escucha que existió, y el front no muestra canciones que no están
     en el catálogo."""
     await pool.execute("DELETE FROM analytics.song_metrics WHERE song_id = $1", event.song_id)
+
+
+# Reproducciones por día de los últimos `days` días (hoy incluido), contando los días
+# en la zona horaria `tz` y con 0 en los días sin escuchas. $3 NULL = todas las canciones.
+DAILY_SQL = """
+WITH bounds AS (
+    SELECT (NOW() AT TIME ZONE $1)::date AS today
+), per_day AS (
+    SELECT (p.played_at AT TIME ZONE $1)::date AS day, COUNT(*) AS plays
+    FROM analytics.play_events p, bounds b
+    WHERE p.played_at >= ((b.today - ($2::int - 1))::timestamp AT TIME ZONE $1)
+      AND ($3::varchar[] IS NULL OR p.song_id = ANY($3::varchar[]))
+    GROUP BY 1
+)
+SELECT g.day::date AS day, COALESCE(per_day.plays, 0) AS plays
+FROM bounds b
+CROSS JOIN generate_series((b.today - ($2::int - 1))::timestamp, b.today::timestamp, interval '1 day') AS g(day)
+LEFT JOIN per_day ON per_day.day = g.day::date
+ORDER BY g.day
+"""
+
+
+async def daily_plays(pool, days: int, tz: str, song_ids: list[str] | None = None):
+    return await pool.fetch(DAILY_SQL, tz, days, song_ids)
+
+
+# Ventana actual (últimos `days` días) contra la anterior del mismo largo. Solo
+# canciones que siguen en el catálogo (song_metrics pierde las borradas).
+TRENDING_SQL = """
+WITH windows AS (
+    SELECT NOW() - make_interval(days => $1) AS since,
+           NOW() - make_interval(days => 2 * $1) AS before
+), current_window AS (
+    SELECT p.song_id, COUNT(*) AS plays
+    FROM analytics.play_events p, windows w
+    WHERE p.played_at >= w.since
+    GROUP BY p.song_id
+), previous_window AS (
+    SELECT p.song_id, COUNT(*) AS plays
+    FROM analytics.play_events p, windows w
+    WHERE p.played_at >= w.before AND p.played_at < w.since
+    GROUP BY p.song_id
+)
+SELECT c.song_id, c.plays, COALESCE(prev.plays, 0) AS previous_plays
+FROM current_window c
+JOIN analytics.song_metrics m ON m.song_id = c.song_id
+LEFT JOIN previous_window prev ON prev.song_id = c.song_id
+ORDER BY c.plays DESC, c.plays - COALESCE(prev.plays, 0) DESC, c.song_id
+LIMIT $2
+"""
+
+WINDOW_TOTALS_SQL = """
+SELECT
+  COUNT(*) FILTER (WHERE played_at >= NOW() - make_interval(days => $1)) AS plays,
+  COUNT(*) FILTER (WHERE played_at >= NOW() - make_interval(days => 2 * $1)
+                     AND played_at < NOW() - make_interval(days => $1)) AS previous_plays
+FROM analytics.play_events
+WHERE played_at >= NOW() - make_interval(days => 2 * $1)
+"""
+
+
+async def trending(pool, days: int, limit: int):
+    """(totales de las dos ventanas, filas por canción)."""
+    totals = await pool.fetchrow(WINDOW_TOTALS_SQL, days)
+    rows = await pool.fetch(TRENDING_SQL, days, limit)
+    return totals, rows

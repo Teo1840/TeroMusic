@@ -25,6 +25,14 @@ REST en `/api/v1/rooms` y WebSocket en `/api/v1/ws/rooms/{room_id}`.
 Los permisos los controla el servidor ([src/commands.js](src/commands.js)), no el front:
 un oyente que mande `play` a mano recibe un error.
 
+Aparte de los roles de cada sala, un **admin de la plataforma** (rol `admin` de user_service, que
+llega en `X-User-Role` desde el gateway) puede cerrar cualquier sala.
+
+El tope de oyentes (`max_listeners`) se respeta aunque entren muchos a la vez: contar quién está y
+anotar la conexión nueva se hace con el candado de la sala (el mismo de los comandos), así que
+dos que entran juntos con un solo lugar libre no pasan los dos, aunque vengan por copias distintas
+del servicio.
+
 ## Visibilidad
 
 - **Pública:** aparece en la lista (`GET /rooms`).
@@ -52,6 +60,13 @@ un oyente que mande `play` a mano recibe un error.
   - cada oyente puede tener hasta 3 sugerencias pendientes;
   - si quien "sugiere" es anfitrión o coanfitrión, va directo a la cola.
 - La misma canción puede estar dos veces en la cola: cada entrada tiene su propio `item_id`.
+- Cada entrada (y lo que suena, en `playback`) trae `artist_id` y `artist_name` del catálogo.
+- **Canción borrada:** cuando el artista borra una canción, catalog_service publica
+  `song.deleted.v1`. rooms_service lo consume (cola `rooms.q`) y la saca de la cola y las
+  sugerencias de todas las salas abiertas. Si era la que sonaba, pasa a la siguiente; si la
+  cola estaba vacía, la sala queda sin canción. Las salas cambiadas reciben un `state` nuevo.
+  Es idempotente (repetir el evento no cambia nada) y, con varias copias del servicio, cada
+  evento lo procesa una sola. Un evento inválido va a `musicapp.dlq`; si falla Redis, se reintenta.
 - Límites: 100 canciones en la cola y 50 sugerencias pendientes por sala.
 
 ### ¿Quién avisa que terminó la canción?
@@ -103,7 +118,7 @@ privadas. Errores: `400` (id inválido) y `404`.
 
 ### `DELETE /rooms/{id}`: cerrar sala
 
-Solo el anfitrión (`403` si no). Borra la sala y **desconecta a todos** con el código `4010`.
+El anfitrión o un admin (`403` si no). Borra la sala y **desconecta a todos** con el código `4010`.
 Responde `204`.
 
 ---
@@ -179,7 +194,8 @@ Ejemplo de `state`:
 | `4001` | Sin autenticación o token inválido | No |
 | `4003` | La sala está llena (`max_listeners`) | No |
 | `4004` | La sala no existe | No |
-| `4010` | El anfitrión cerró la sala | No |
+| `4010` | El anfitrión (o un admin) cerró la sala | No |
+| `1013` | La sala estaba ocupada (candado) y no se pudo entrar | Sí |
 | otro | Corte de red, reinicio del servidor | Sí, con espera creciente de 1 s a 10 s |
 
 ---
@@ -281,7 +297,7 @@ de la sala, que el contrato de `song.played.v1` ya tenía previsto.
 |---|---|---|
 | `JWT_SECRET` | — | Verificar el JWT (el mismo de user_service) |
 | `REDIS_URL` | `redis://redis:6379` | Estado y pub/sub |
-| `RABBITMQ_URL` | `amqp://guest:guest@rabbitmq:5672` | Evento `room.created.v1` |
+| `RABBITMQ_URL` | `amqp://guest:guest@rabbitmq:5672` | Publica `room.created.v1`, consume `song.deleted.v1` |
 | `CATALOG_URL` | `http://catalog_service:8000` | Validar la canción en `set_song` |
 | `ROOM_TTL_SEC` | `86400` | Borrar salas inactivas |
 | `ROOM_DEFAULT_MAX_LISTENERS` | `50` | Máximo de oyentes si no se indica |
@@ -294,5 +310,5 @@ de la sala, que el contrato de `song.played.v1` ya tenía previsto.
 ```
 cd services/rooms_service
 npm install
-npm test     # 31 tests: posición, roles y permisos, cola y sugerencias, API REST (Redis y RabbitMQ simulados)
+npm test     # 39 tests: posición, roles y permisos, cola y sugerencias, canción borrada, API REST (Redis y RabbitMQ simulados)
 ```

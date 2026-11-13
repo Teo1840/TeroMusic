@@ -10,8 +10,8 @@ CONTRACTS = Path(__file__).resolve().parents[1] / "contracts"
 
 PLAYED = "song.played.v1"
 DELETED = "song.deleted.v1"
-# Eventos que solo se cuentan (usuarios registrados y salas creadas).
-COUNTED = ("user.registered.v1", "room.created.v1")
+# Eventos que solo se cuentan (usuarios registrados y borrados, salas creadas).
+COUNTED = ("user.registered.v1", "room.created.v1", "user.deleted.v1")
 TYPES = (PLAYED, DELETED, *COUNTED)
 
 
@@ -59,7 +59,7 @@ def parse_event(body: bytes, routing_key: str) -> SongPlayed | SongDeleted | Dom
     if event["type"] == DELETED:
         return SongDeleted(event_id=event["id"], song_id=event["data"]["song_id"])
     data = event["data"]
-    subject_id = data["user_id"] if event["type"] == "user.registered.v1" else data["room_id"]
+    subject_id = data["room_id"] if event["type"] == "room.created.v1" else data["user_id"]
     return DomainEvent(
         event_id=event["id"], type=event["type"], subject_id=subject_id,
         timestamp=event["time"],

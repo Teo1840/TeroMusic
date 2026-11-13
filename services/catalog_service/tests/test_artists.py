@@ -130,3 +130,49 @@ def test_la_playlist_trae_el_nombre_de_quien_la_armo(client):
     headers = {"X-User-Id": str(USER_ID)}
     playlist = client.post("/playlists", json={"name": "Mía"}, headers=headers).json()
     assert client.get(f"/playlists/{playlist['id']}", headers=headers).json()["owner_name"] == "Ana"
+
+
+def test_listado_filtrado_por_artista(client, run):
+    otro = uuid.uuid4()
+    mio = seed_song(run, title="Mío")
+    seed_song(run, artist_id=otro, title="Ajeno")
+
+    songs = client.get("/songs", params={"artist_id": str(USER_ID)}).json()
+    assert [s["id"] for s in songs] == [str(mio)]
+    assert len(client.get("/songs").json()) == 2
+    assert client.get("/songs", params={"artist_id": str(uuid.uuid4())}).json() == []
+    assert client.get("/songs", params={"artist_id": "no-es-uuid"}).status_code == 422
+
+
+def test_el_filtro_por_artista_no_muestra_borradores(client, run):
+    async def seed(session):
+        session.add(Song(title="En proceso", artist_id=USER_ID, status=SongStatus.BORRADOR))
+        await session.commit()
+
+    run(seed)
+    assert client.get("/songs", params={"artist_id": str(USER_ID)}).json() == []
+
+
+def test_perfil_del_artista(client, run):
+    handle(registered(display_name="Ana"))
+    seed_song(run)
+    seed_song(run, title="Otro")
+
+    assert client.get(f"/artists/{USER_ID}").json() == {
+        "id": str(USER_ID), "username": "ana", "display_name": "Ana", "song_count": 2,
+    }
+
+
+def test_perfil_del_artista_sin_canciones_o_sin_perfil(client, run):
+    handle(registered(display_name="Ana"))
+    assert client.get(f"/artists/{USER_ID}").json()["song_count"] == 0
+
+    sin_perfil = uuid.uuid4()
+    seed_song(run, artist_id=sin_perfil)
+    artista = client.get(f"/artists/{sin_perfil}").json()
+    assert artista["display_name"] is None and artista["song_count"] == 1
+
+
+def test_artista_inexistente_da_404(client):
+    assert client.get(f"/artists/{uuid.uuid4()}").status_code == 404
+    assert client.get("/artists/no-es-uuid").status_code == 422

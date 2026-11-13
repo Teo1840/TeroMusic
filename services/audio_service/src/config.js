@@ -43,4 +43,7 @@ module.exports = {
   chunkSize: int('CHUNK_SIZE', 1024 * 1024),
 
   rabbitmqUrl: env.RABBITMQ_URL || 'amqp://guest:guest@rabbitmq:5672',
+
+  // Segundos minimos escuchados para que una reproduccion cuente (ver plays.js).
+  playMinSec: int('PLAY_MIN_SEC', 30),
 };
