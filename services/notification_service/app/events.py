@@ -7,7 +7,7 @@ CONTRACTS = Path(os.environ["CONTRACTS_DIR"]) if "CONTRACTS_DIR" in os.environ e
     parent / "contracts" for parent in Path(__file__).resolve().parents
     if (parent / "contracts" / "envelope.schema.json").exists()
 )
-TYPES = ("user.registered.v1", "room.created.v1", "audio.uploaded.v1", "audio.ready.v1", "audio.failed.v1", "user.deleted.v1")
+TYPES = ("user.registered.v1", "room.created.v1", "audio.uploaded.v1", "audio.ready.v1", "audio.failed.v1", "user.deleted.v1", "song.deleted.v1")
 def validator(name):
     return Draft202012Validator(json.loads((CONTRACTS / name).read_text(encoding="utf-8")), format_checker=FormatChecker())
 ENVELOPE = validator("envelope.schema.json")

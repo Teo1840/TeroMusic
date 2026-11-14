@@ -74,10 +74,38 @@ async def forget_user(pool, user_id: UUID):
             await connection.execute("DELETE FROM notifications.uploads WHERE user_id=$1", user_id)
 
 
+async def notify_song_removed(pool, event):
+    """song.deleted.v1: si la borró un admin (deleted_by distinto del dueño), avisa al
+    artista. Si la borró él mismo, o se borró junto con su cuenta, no hay nada que avisar.
+    Repetir el evento no duplica el aviso (event_id único en history)."""
+    data = event["data"]
+    artist, deleted_by = UUID(data["artist_id"]), UUID(data["deleted_by"])
+    if artist == deleted_by:
+        return
+    event_id, song_id = UUID(event["id"]), UUID(data["song_id"])
+    timestamp = datetime.fromisoformat(event["time"].replace("Z", "+00:00"))
+    title = data.get("title")
+    message = (f"Un administrador borró tu canción «{title}»." if title
+               else "Un administrador borró una de tus canciones.")
+    async with pool.acquire() as connection:
+        async with connection.transaction():
+            await connection.execute(
+                """INSERT INTO notifications.events(event_id,type,song_id,payload,occurred_at)
+                VALUES ($1,$2,$3,$4::jsonb,$5) ON CONFLICT DO NOTHING""",
+                event_id, event["type"], song_id, json.dumps(data), timestamp)
+            await connection.execute(
+                """INSERT INTO notifications.history(event_id,user_id,type,message,resource_id,created_at)
+                VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING""",
+                event_id, artist, event["type"], message, song_id, timestamp)
+
+
 async def record_event(pool, event):
     kind, data = event["type"], event["data"]
     if kind == "user.deleted.v1":
         await forget_user(pool, UUID(data["user_id"]))
+        return
+    if kind == "song.deleted.v1":
+        await notify_song_removed(pool, event)
         return
     event_id = UUID(event["id"])
     song_id = UUID(data["song_id"]) if "song_id" in data else None

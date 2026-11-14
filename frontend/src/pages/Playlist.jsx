@@ -2,9 +2,10 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import api from "../api/client";
 import AudioPlayer from "../components/AudioPlayer";
-import { ArrowDownIcon, ArrowUpIcon, CloseIcon, PlusIcon } from "../components/Icons";
+import { ArrowDownIcon, ArrowUpIcon, CloseIcon, PlusIcon, ShuffleIcon } from "../components/Icons";
 import SongSearch from "../components/SongSearch";
 import { artistLabel, errorMessage, formatTime } from "../lib/format";
+import { shuffled } from "../lib/shuffle";
 
 /*
  * Usa estos endpoints de catalog_service (app/playlists.py):
@@ -129,6 +130,9 @@ export default function Playlist() {
     const [playingId, setPlayingId] = useState(null);  // canción actual de la cola personal
     const [playSession, setPlaySession] = useState(0);
     const [reordering, setReordering] = useState(false);
+    // Aleatorio: orden mezclado (ids) para la cola. No cambia el orden guardado de la playlist.
+    const [shuffle, setShuffle] = useState(false);
+    const [order, setOrder] = useState([]);
 
     async function loadPlaylist(isCancelled) {
         try {
@@ -155,6 +159,7 @@ export default function Playlist() {
         let cancelled = false;
         setLoading(true);
         setPlayingId(null);
+        setShuffle(false);
         setPlaylist(null);
         setNotice("");
         setError("");
@@ -168,16 +173,40 @@ export default function Playlist() {
     const songs = playlist?.songs ?? [];
     const inPlaylist = new Set(songs.map((s) => s.id));
     const playable = songs.filter((song) => (song.status ?? "PUBLICADO") === "PUBLICADO");
-    const currentSong = playable.find((song) => song.id === playingId);
-    const currentIndex = playable.findIndex((song) => song.id === playingId);
+    // Con aleatorio: el orden mezclado, sin las que se sacaron y con las nuevas al final.
+    const queue = shuffle
+        ? [
+            ...order.map((id) => playable.find((song) => song.id === id)).filter(Boolean),
+            ...playable.filter((song) => !order.includes(song.id))
+        ]
+        : playable;
+    const currentSong = queue.find((song) => song.id === playingId);
+    const currentIndex = queue.findIndex((song) => song.id === playingId);
 
     function playSong(song) {
         setPlayingId(song.id);
         setPlaySession((session) => session + 1);
     }
 
+    function playFromStart() {
+        setNotice("");
+        if (shuffle) {
+            const mixed = shuffled(playable);
+            setOrder(mixed.map((song) => song.id));
+            playSong(mixed[0]);
+        } else {
+            playSong(playable[0]);
+        }
+    }
+
+    // Al prenderlo, la que suena queda primera y se mezcla el resto.
+    function toggleShuffle() {
+        if (!shuffle) setOrder(shuffled(playable, playingId).map((song) => song.id));
+        setShuffle(!shuffle);
+    }
+
     function playNext() {
-        const next = playable[currentIndex + 1];
+        const next = queue[currentIndex + 1];
         if (next) playSong(next);
         else {
             setPlayingId(null);
@@ -333,19 +362,25 @@ export default function Playlist() {
                     )}
 
                     <div className="mb-6">
-                        <button type="button" className="btn-primary" disabled={playable.length === 0}
-                            onClick={() => { setNotice(""); playSong(playable[0]); }}>
-                            Reproducir playlist
-                        </button>
+                        <div className="flex flex-wrap gap-2">
+                            <button type="button" className="btn-primary" disabled={playable.length === 0}
+                                onClick={playFromStart}>
+                                Reproducir playlist
+                            </button>
+                            <button type="button" className={shuffle ? "btn-primary" : "btn"} disabled={playable.length < 2}
+                                aria-pressed={shuffle} onClick={toggleShuffle}>
+                                <ShuffleIcon /> Aleatorio
+                            </button>
+                        </div>
                         {currentSong && (
                             <section className="card mt-3" aria-label="Reproductor de playlist">
                                 <p className="font-semibold" aria-live="polite">{currentSong.title}</p>
-                                <p className="muted text-sm">Canción {currentIndex + 1} de {playable.length}</p>
+                                <p className="muted text-sm">Canción {currentIndex + 1} de {queue.length}{shuffle && " · aleatorio"}</p>
                                 <AudioPlayer key={`${playingId}-${playSession}`} songId={playingId} autoPlay onEnded={playNext} />
                                 <div className="flex flex-wrap gap-2 mt-3">
                                     <button type="button" className="btn py-1 text-sm" disabled={currentIndex <= 0}
-                                        onClick={() => playSong(playable[currentIndex - 1])}>Anterior</button>
-                                    <button type="button" className="btn py-1 text-sm" disabled={currentIndex >= playable.length - 1}
+                                        onClick={() => playSong(queue[currentIndex - 1])}>Anterior</button>
+                                    <button type="button" className="btn py-1 text-sm" disabled={currentIndex >= queue.length - 1}
                                         onClick={playNext}>Siguiente</button>
                                     <button type="button" className="btn py-1 text-sm" onClick={() => setPlayingId(null)}>Detener</button>
                                 </div>

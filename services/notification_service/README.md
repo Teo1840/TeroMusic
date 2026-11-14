@@ -11,6 +11,9 @@ logica dentro de la instancia compartida; no consulta tablas de otros servicios)
 - `audio.uploaded.v1`: guarda `song_id -> uploaded_by`, sin crear una alerta.
 - `audio.ready.v1`: confirma el procesamiento al usuario que subio el audio.
 - `audio.failed.v1`: informa el fallo al mismo usuario.
+- `song.deleted.v1`: si la borro un admin (`deleted_by` distinto de `artist_id`), avisa al
+  artista: "Un administrador borro tu cancion «titulo»". Si la borro el propio artista, o se
+  borro junto con su cuenta, no hay aviso.
 
 Los resultados de audio anteriores a la subida quedan persistidos hasta recibir
 el propietario. No se necesita modificar contratos ni productores. La relacion

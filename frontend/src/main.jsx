@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App";
+import { PlayerProvider } from "./lib/player";
 import { RoomProvider } from "./lib/roomSession";
 import { startSessionRefresh } from "./lib/session";
 
@@ -13,9 +14,11 @@ startSessionRefresh();
 ReactDOM.createRoot(document.getElementById("root")).render(
     <React.StrictMode>
         <BrowserRouter>
-            {/* Fuera de las rutas: la sala en vivo sigue sonando al cambiar de página. */}
+            {/* Fuera de las rutas: la sala en vivo y la canción del catálogo siguen sonando al cambiar de página. */}
             <RoomProvider>
-                <App />
+                <PlayerProvider>
+                    <App />
+                </PlayerProvider>
             </RoomProvider>
         </BrowserRouter>
     </React.StrictMode>

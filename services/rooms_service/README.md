@@ -139,6 +139,16 @@ que ser el JWT:
 Así el token no queda en la URL ni en los logs del gateway. Si no llega en 5 segundos, o es
 inválido, el servidor cierra la conexión con `4001`.
 
+**Sesiones revocadas.** La firma del JWT no dice si la sesión se revocó (cambio de contraseña o
+cuenta borrada: `token_version` en user_service). Como el WebSocket no pasa por el `/verify` del
+gateway, rooms_service se lo pregunta a user_service ([src/session.js](src/session.js)):
+
+- **Al entrar:** sesión revocada → `4001`. Si user_service no responde → `1013` (el front reintenta).
+- **Mientras se escucha**, cada `WS_SESSION_CHECK_MS` (60 s): sesión revocada → `4001`; token
+  vencido → `4002`, y el front se reconecta solo con su token renovado. Si user_service no
+  responde no se echa a nadie (cortar a todos sería peor que esperar al próximo chequeo).
+  Se hace una consulta por token, aunque el usuario tenga varias pestañas.
+
 ### 2. Mensajes del cliente
 
 | `type` | Campos | Quién | Qué hace |
@@ -191,11 +201,12 @@ Ejemplo de `state`:
 
 | Código | Motivo | ¿El front reintenta? |
 |---|---|---|
-| `4001` | Sin autenticación o token inválido | No |
+| `4001` | Sin autenticación, token inválido o sesión revocada | No |
+| `4002` | Venció el token de la conexión | Sí: se reconecta con el token renovado |
 | `4003` | La sala está llena (`max_listeners`) | No |
 | `4004` | La sala no existe | No |
 | `4010` | El anfitrión (o un admin) cerró la sala | No |
-| `1013` | La sala estaba ocupada (candado) y no se pudo entrar | Sí |
+| `1013` | No se pudo entrar en este momento (sala ocupada o user_service sin responder) | Sí |
 | otro | Corte de red, reinicio del servidor | Sí, con espera creciente de 1 s a 10 s |
 
 ---
@@ -304,6 +315,9 @@ de la sala, que el contrato de `song.played.v1` ya tenía previsto.
 | `ROOM_START_DELAY_MS` | `1500` | Margen al cambiar de canción |
 | `WS_AUTH_TIMEOUT_MS` | `5000` | Tiempo para mandar `auth` |
 | `WS_HEARTBEAT_MS` | `25000` | Ping para detectar conexiones muertas |
+| `USER_SERVICE_URL` | `http://user_service:8000` | `GET /verify`: si la sesión sigue valiendo. Vacío = no se consulta |
+| `USER_SERVICE_TIMEOUT_MS` | `3000` | Espera máxima de esa consulta |
+| `WS_SESSION_CHECK_MS` | `60000` | Cada cuánto se rechequean las sesiones conectadas |
 
 ## Tests
 
