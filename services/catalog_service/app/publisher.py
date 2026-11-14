@@ -76,5 +76,5 @@ async def publish(
     )
     # routing key = type del evento (regla del contrato)
     await _exchange.publish(message, routing_key=event_type)
-    log.info("Evento publicado: %s (%s)", event_type, subject)
+    log.info("Evento publicado: %s (%s) cid=%s", event_type, subject, correlation_id)
     return event

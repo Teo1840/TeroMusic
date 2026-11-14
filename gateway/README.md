@@ -33,6 +33,13 @@ Escucha en http://localhost:8080.
    El rol lo lee user_service de su base en cada pedido (un cambio de rol vale al instante).
 3. También agrega `X-Correlation-Id` para seguir el pedido en los eventos.
 
+## Servicios recreados
+
+Todas las `upstream` usan `resolve`: nginx vuelve a preguntarle al DNS de Docker cada 10 s.
+Cuando un servicio se recrea (`docker compose up --build`) cambia de IP; sin esto nginx seguía
+mandando a la IP vieja, que podía quedar asignada a otro contenedor (se veía un `404` de otro
+servicio hasta reiniciar el gateway). Ahora, como mucho, hay unos segundos de `502`.
+
 ## CORS
 
 El front no lo necesita: llama a `/api/v1` por el proxy de Vite, desde su mismo origen. Para

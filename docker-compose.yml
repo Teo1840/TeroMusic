@@ -277,6 +277,8 @@ services:
       REDIS_URL: redis://redis:6379
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASS:-guest}@rabbitmq:5672
       CATALOG_URL: http://catalog_service:8000
+      # Al entrar por WebSocket (y cada minuto) se pregunta si la sesion sigue valiendo.
+      USER_SERVICE_URL: http://user_service:8000
       ROOM_TTL_SEC: 86400
       ROOM_DEFAULT_MAX_LISTENERS: 50
     ports:
@@ -287,6 +289,8 @@ services:
       rabbitmq:
         condition: service_healthy
       catalog_service:
+        condition: service_healthy
+      user_service:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8000/health"]

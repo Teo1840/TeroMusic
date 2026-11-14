@@ -218,7 +218,7 @@ async def handle(message: aio_pika.abc.AbstractIncomingMessage) -> None:
     elif event_type in USER_EVENTS:
         log.info("Artista %s: %s (%s)", data["user_id"], event_type, outcome)
     else:
-        log.info("Canción %s actualizada por %s", song_id, event_type)
+        log.info("Canción %s actualizada por %s cid=%s", song_id, event_type, event.get("correlationid"))
     await message.ack()
 
 

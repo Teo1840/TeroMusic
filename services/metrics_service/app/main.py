@@ -20,7 +20,7 @@ from app.models import (
 from app.events import TYPES, parse_event
 
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("metrics")
 
 RETRY_DELAY_SEC = 2

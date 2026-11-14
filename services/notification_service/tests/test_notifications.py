@@ -103,6 +103,27 @@ class PersistenceTest(unittest.IsolatedAsyncioTestCase):
         rows = await user_notifications(user, 50, 0, None)
         self.assertEqual({row["type"] for row in rows}, {"room.created.v1", "audio.failed.v1"})
 
+    async def test_admin_borra_cancion_avisa_al_artista(self):
+        song, artist, admin = uuid4(), uuid4(), uuid4()
+        event = example("song.deleted.v1")
+        event["data"].update(song_id=str(song), artist_id=str(artist), deleted_by=str(admin), title="Mi tema")
+        await self.save(event)
+        await self.save(event)  # repetido: un solo aviso
+        rows = await user_notifications(artist, 50, 0, None)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["type"], "song.deleted.v1")
+        self.assertIn("Mi tema", rows[0]["message"])
+        self.assertEqual(rows[0]["resource_id"], song)
+        # Al admin no le llega nada.
+        self.assertEqual(await user_notifications(admin, 50, 0, None), [])
+
+    async def test_artista_que_borra_lo_suyo_no_recibe_aviso(self):
+        artist = uuid4()
+        event = example("song.deleted.v1")
+        event["data"].update(song_id=str(uuid4()), artist_id=str(artist), deleted_by=str(artist))
+        await self.save(event)
+        self.assertEqual(await user_notifications(artist, 50, 0, None), [])
+
     async def welcome(self, user):
         event = example("user.registered.v1")
         event["data"]["user_id"] = str(user)

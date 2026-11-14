@@ -46,6 +46,18 @@ describe("Notifications", () => {
         expect(await screen.findByText("Todavía no tenés notificaciones.")).toBeTruthy();
     });
 
+    it("una canción borrada por un admin se ve como tal y lleva a Mis canciones", async () => {
+        api.get.mockResolvedValue({ data: [
+            notification(7, "song.deleted.v1", "Un administrador borró tu canción «Mi tema».", { resource_id: "song-1" })
+        ] });
+        renderPage();
+
+        const [item] = await screen.findAllByRole("listitem");
+        expect(within(item).getByText("Canción borrada")).toBeTruthy();
+        expect(within(item).getByText("Un administrador borró tu canción «Mi tema».")).toBeTruthy();
+        expect(within(item).getByRole("link").getAttribute("href")).toBe("/my-songs");
+    });
+
     it("muestra el error si el servicio no responde", async () => {
         api.get.mockRejectedValue({ response: { status: 503, data: { detail: "Database unavailable" } } });
         renderPage();

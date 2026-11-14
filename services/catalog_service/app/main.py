@@ -45,7 +45,7 @@ async def lifespan(app: FastAPI):
     await engine.dispose()
 
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 app = FastAPI(title="catalog_service", lifespan=lifespan)
 app.include_router(playlists.router)

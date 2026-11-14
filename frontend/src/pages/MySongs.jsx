@@ -183,7 +183,7 @@ export default function MySongs() {
                                 )}
                             </div>
 
-                            {song.status === "PUBLICADO" && <AudioPlayer songId={song.id} />}
+                            {song.status === "PUBLICADO" && <AudioPlayer song={song} />}
 
                         </li>
                     );

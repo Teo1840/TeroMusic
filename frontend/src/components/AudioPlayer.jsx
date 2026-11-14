@@ -2,18 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import api from "../api/client";
 import { PLAY_EVENT, usePlayTracking, useSignedStreamUrl } from "../lib/audio";
 import { formatTime } from "../lib/format";
+import { saveVolume, savedVolume, usePlayer } from "../lib/player";
 import { PauseIcon, PlayIcon, VolumeIcon, VolumeOffIcon } from "./Icons";
-
-const VOLUME_KEY = "player_volume";
-
-function savedVolume() {
-    try {
-        const value = Number(localStorage.getItem(VOLUME_KEY));
-        return localStorage.getItem(VOLUME_KEY) !== null && value >= 0 && value <= 1 ? value : 1;
-    } catch {
-        return 1;
-    }
-}
 
 /** Picos de la canción (GET /audio/waveform/{id}) o null si no tiene: se muestra una barra simple. */
 function useWaveform(songId) {
@@ -116,9 +106,14 @@ function WaveformBar({ peaks, current, duration, onSeek }) {
  * Monta el reproductor recién cuando la tarjeta se acerca a la pantalla: cada uno hace
  * varios pedidos (URL firmada, forma de onda, metadata del audio) y con un catálogo largo
  * pedirlos todos juntos supera el rate limit del gateway (429).
+ *
+ * Con `song` usa el reproductor de la sesión (lib/player.jsx): sigue sonando al cambiar
+ * de página y se controla también desde la barra de abajo. Con `songId` (cola de playlist)
+ * es un reproductor propio de la página.
  */
-export default function AudioPlayer({ songId, autoPlay = false, onEnded }) {
+export default function AudioPlayer({ song, songId = song?.id, queue, autoPlay = false, onEnded }) {
 
+    const shared = usePlayer();
     const boxRef = useRef(null);
     const [visible, setVisible] = useState(typeof IntersectionObserver === "undefined");
 
@@ -140,104 +135,46 @@ export default function AudioPlayer({ songId, autoPlay = false, onEnded }) {
     if (!visible && !autoPlay) {
         return <div ref={boxRef} className="mt-2 h-16" aria-hidden="true" />;
     }
+    if (song && shared && !autoPlay && !onEnded) {
+        return <SharedPlayer key={song.id} song={song} queue={queue} player={shared} />;
+    }
     return <Player key={songId} songId={songId} autoPlay={autoPlay} onEnded={onEnded} />;
 }
 
-function Player({ songId, autoPlay, onEnded }) {
+/** Tarjeta conectada al reproductor de la sesión: si es la canción actual muestra su estado. */
+function SharedPlayer({ song, queue, player }) {
 
-    const audioRef = useRef(null);
-    const { src, onError, onLoadedData } = useSignedStreamUrl(songId, audioRef);
-    const tracking = usePlayTracking(songId, audioRef);
-    const peaks = useWaveform(songId);
-
-    const [playing, setPlaying] = useState(false);
-    const [current, setCurrent] = useState(0);
-    const [duration, setDuration] = useState(0);
-    const [volume, setVolume] = useState(savedVolume);
-    const [muted, setMuted] = useState(false);
-    const [playNotice, setPlayNotice] = useState("");
-
-    useEffect(() => {
-        if (!autoPlay || !src || !audioRef.current) return;
-        let cancelled = false;
-        audioRef.current.play().catch(() => {
-            if (!cancelled) setPlayNotice("No se pudo iniciar el audio automáticamente. Tocá Reproducir para continuar.");
-        });
-        return () => { cancelled = true; };
-    }, [autoPlay, src]);
-
-    useEffect(() => {
-        if (!audioRef.current) return;
-        audioRef.current.volume = volume;
-        audioRef.current.muted = muted;
-    }, [volume, muted, src]);
-
-    useEffect(() => {
-        try {
-            localStorage.setItem(VOLUME_KEY, String(volume));
-        } catch {
-            // Sin almacenamiento el volumen vale solo para esta página.
-        }
-    }, [volume]);
-
-    // Si otro reproductor arranca, este se pausa.
-    useEffect(() => {
-        const onOtherPlay = (e) => {
-            if (e.detail !== songId) audioRef.current?.pause();
-        };
-        window.addEventListener(PLAY_EVENT, onOtherPlay);
-        return () => window.removeEventListener(PLAY_EVENT, onOtherPlay);
-    }, [songId]);
-
-    if (!src) {
-        return <p className="text-sm muted mt-2">Cargando audio...</p>;
-    }
-
-    const togglePlay = () => {
-        const audio = audioRef.current;
-        if (audio.paused) audio.play().catch(() => {});
-        else audio.pause();
-    };
-
-    const seek = (seconds) => {
-        audioRef.current.currentTime = seconds;
-        setCurrent(seconds);
-    };
+    const peaks = useWaveform(song.id);
+    const active = player.song?.id === song.id;
+    const songDuration = Number.isFinite(song.duration) ? song.duration : 0;
 
     return (
+        <PlayerControls
+            peaks={peaks}
+            playing={active && player.playing}
+            current={active ? player.current : 0}
+            duration={(active && player.duration) || songDuration}
+            notice={active ? player.notice : ""}
+            onToggle={() => (active ? player.toggle() : player.play(song, { queue }))}
+            onSeek={(seconds) => (active ? player.seek(seconds) : player.play(song, { at: seconds, queue }))}
+            volume={player.volume}
+            setVolume={player.setVolume}
+            muted={player.muted}
+            setMuted={player.setMuted}
+        />
+    );
+}
+
+/** Botón, forma de onda, tiempo y volumen. Sin estado propio. */
+function PlayerControls({ peaks, playing, current, duration, notice, onToggle, onSeek, volume, setVolume, muted, setMuted }) {
+    return (
         <div className="mt-2">
-            <audio
-                ref={audioRef}
-                preload="metadata"
-                src={src}
-                onError={onError}
-                onLoadedData={onLoadedData}
-                onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
-                onDurationChange={(e) => setDuration(e.currentTarget.duration)}
-                onPlay={() => {
-                    setPlayNotice("");
-                    tracking.onPlay();
-                    setPlaying(true);
-                    window.dispatchEvent(new CustomEvent(PLAY_EVENT, { detail: songId }));
-                }}
-                onPause={() => setPlaying(false)}
-                onTimeUpdate={(e) => {
-                    tracking.onTimeUpdate();
-                    setCurrent(e.currentTarget.currentTime);
-                }}
-                onSeeked={tracking.onSeeked}
-                onEnded={() => {
-                    tracking.onEnded();
-                    setPlaying(false);
-                    onEnded?.();
-                }}
-            />
-            {playNotice && <p className="text-sm muted" role="status">{playNotice}</p>}
+            {notice && <p className="text-sm muted" role="status">{notice}</p>}
 
             <div className="flex items-center gap-2">
                 <button
                     type="button"
-                    onClick={togglePlay}
+                    onClick={onToggle}
                     aria-label={playing ? "Pausar" : "Reproducir"}
                     title={playing ? "Pausar" : "Reproducir"}
                     className="shrink-0 btn-primary p-2"
@@ -245,7 +182,7 @@ function Player({ songId, autoPlay, onEnded }) {
                     {playing ? <PauseIcon size={18} /> : <PlayIcon size={18} />}
                 </button>
 
-                <WaveformBar peaks={peaks} current={current} duration={duration} onSeek={seek} />
+                <WaveformBar peaks={peaks} current={current} duration={duration} onSeek={onSeek} />
             </div>
 
             <div className="flex items-center justify-between gap-2 mt-1 text-xs muted">
@@ -278,5 +215,107 @@ function Player({ songId, autoPlay, onEnded }) {
                 </div>
             </div>
         </div>
+    );
+}
+
+function Player({ songId, autoPlay, onEnded }) {
+
+    const audioRef = useRef(null);
+    const { src, onError, onLoadedData } = useSignedStreamUrl(songId, audioRef);
+    const tracking = usePlayTracking(songId, audioRef);
+    const peaks = useWaveform(songId);
+
+    const [playing, setPlaying] = useState(false);
+    const [current, setCurrent] = useState(0);
+    const [duration, setDuration] = useState(0);
+    const [volume, setVolume] = useState(savedVolume);
+    const [muted, setMuted] = useState(false);
+    const [playNotice, setPlayNotice] = useState("");
+
+    useEffect(() => {
+        if (!autoPlay || !src || !audioRef.current) return;
+        let cancelled = false;
+        audioRef.current.play().catch(() => {
+            if (!cancelled) setPlayNotice("No se pudo iniciar el audio automáticamente. Tocá Reproducir para continuar.");
+        });
+        return () => { cancelled = true; };
+    }, [autoPlay, src]);
+
+    useEffect(() => {
+        if (!audioRef.current) return;
+        audioRef.current.volume = volume;
+        audioRef.current.muted = muted;
+    }, [volume, muted, src]);
+
+    useEffect(() => {
+        saveVolume(volume);
+    }, [volume]);
+
+    // Si otro reproductor arranca, este se pausa.
+    useEffect(() => {
+        const onOtherPlay = (e) => {
+            if (e.detail !== songId) audioRef.current?.pause();
+        };
+        window.addEventListener(PLAY_EVENT, onOtherPlay);
+        return () => window.removeEventListener(PLAY_EVENT, onOtherPlay);
+    }, [songId]);
+
+    if (!src) {
+        return <p className="text-sm muted mt-2">Cargando audio...</p>;
+    }
+
+    const togglePlay = () => {
+        const audio = audioRef.current;
+        if (audio.paused) audio.play().catch(() => {});
+        else audio.pause();
+    };
+
+    const seek = (seconds) => {
+        audioRef.current.currentTime = seconds;
+        setCurrent(seconds);
+    };
+
+    return (
+        <>
+            <audio
+                ref={audioRef}
+                preload="metadata"
+                src={src}
+                onError={onError}
+                onLoadedData={onLoadedData}
+                onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
+                onDurationChange={(e) => setDuration(e.currentTarget.duration)}
+                onPlay={() => {
+                    setPlayNotice("");
+                    tracking.onPlay();
+                    setPlaying(true);
+                    window.dispatchEvent(new CustomEvent(PLAY_EVENT, { detail: songId }));
+                }}
+                onPause={() => setPlaying(false)}
+                onTimeUpdate={(e) => {
+                    tracking.onTimeUpdate();
+                    setCurrent(e.currentTarget.currentTime);
+                }}
+                onSeeked={tracking.onSeeked}
+                onEnded={() => {
+                    tracking.onEnded();
+                    setPlaying(false);
+                    onEnded?.();
+                }}
+            />
+            <PlayerControls
+                peaks={peaks}
+                playing={playing}
+                current={current}
+                duration={duration}
+                notice={playNotice}
+                onToggle={togglePlay}
+                onSeek={seek}
+                volume={volume}
+                setVolume={setVolume}
+                muted={muted}
+                setMuted={setMuted}
+            />
+        </>
     );
 }

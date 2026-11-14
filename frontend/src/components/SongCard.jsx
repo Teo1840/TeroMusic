@@ -4,7 +4,7 @@ import AudioPlayer from "./AudioPlayer";
 import { artistLabel, formatTime, initials } from "../lib/format";
 
 /** Tarjeta de una canción publicada: reproductor y agregar a playlist. La usan el catálogo y la página del artista. */
-export default function SongCard({ song, showArtist = true }) {
+export default function SongCard({ song, queue, showArtist = true }) {
     return (
         <article className="card min-w-0 flex flex-col">
             <div className="flex items-start gap-3">
@@ -22,7 +22,7 @@ export default function SongCard({ song, showArtist = true }) {
                     <span className="text-xs muted tabular-nums shrink-0 pt-0.5">{formatTime(song.duration)}</span>
                 )}
             </div>
-            <AudioPlayer songId={song.id} />
+            <AudioPlayer song={song} queue={queue} />
             <div className="mt-auto">
                 <AddToPlaylist song={song} />
             </div>

@@ -5,6 +5,7 @@ const { WebSocketServer } = require('ws');
 const auth = require('./auth');
 const commands = require('./commands');
 const config = require('./config');
+const session = require('./session');
 const { snapshot } = require('./snapshot');
 
 /**
@@ -24,6 +25,10 @@ const { snapshot } = require('./snapshot');
 // Codigos de cierre propios (4000-4999 estan reservados para aplicaciones).
 const CLOSE = {
   AUTH: 4001,
+  // El JWT de la conexion vencio: el cliente se reconecta solo con su token renovado.
+  TOKEN_EXPIRED: 4002,
+  // No se pudo verificar la sesion en este momento (user_service no responde): reintentar.
+  TRY_AGAIN: 1013,
   FULL: 4003,
   NOT_FOUND: 4004,
   ROOM_CLOSED: 4010,
@@ -32,10 +37,11 @@ const CLOSE = {
 const PATH = /^\/rooms\/([0-9a-f-]{36})\/ws$/i;
 
 class Hub {
-  constructor({ store, getSong, now = Date.now }) {
+  constructor({ store, getSong, now = Date.now, checkSession = session.check }) {
     this.store = store;
     this.getSong = getSong;
     this.now = now;
+    this.checkSession = checkSession;
     this.rooms = new Map(); // room_id → Set de sockets de ESTA copia
     this.wss = new WebSocketServer({ noServer: true, maxPayload: 4 * 1024 });
   }
@@ -64,6 +70,42 @@ class Hub {
       }
     }, config.wsHeartbeatMs);
     this.heartbeat.unref();
+
+    // Sesiones revocadas mientras se escucha: se echa al usuario sin esperar a que se desconecte.
+    this.sessionTimer = setInterval(() => {
+      this.recheckSessions().catch((error) => console.warn(`[hub] Al chequear sesiones: ${error.message}`));
+    }, config.sessionCheckMs);
+    this.sessionTimer.unref();
+  }
+
+  /**
+   * Vuelve a chequear la sesion de cada conexion autenticada de esta copia.
+   * - JWT vencido → 4002: el front se reconecta solo y manda el token renovado.
+   * - Sesion revocada → 4001: no reintenta (hay que volver a entrar).
+   * - user_service caido → no se echa a nadie: no se sabe, y cortar a todos seria peor.
+   * Una consulta por token, aunque el usuario tenga varias pestañas.
+   */
+  async recheckSessions(sockets = [...this.wss.clients]) {
+    const byToken = new Map();
+    for (const ws of sockets) {
+      if (!ws.user || !ws.token || ws.readyState !== ws.OPEN) continue;
+      if (!byToken.has(ws.token)) byToken.set(ws.token, []);
+      byToken.get(ws.token).push(ws);
+    }
+    for (const [token, group] of byToken) {
+      let code = null;
+      try {
+        auth.verify(token, undefined, this.now());
+        // eslint-disable-next-line no-await-in-loop
+        await this.checkSession(token);
+      } catch (error) {
+        if (error instanceof auth.Unauthorized) code = CLOSE.TOKEN_EXPIRED;
+        else if (error instanceof session.SessionRevoked) code = CLOSE.AUTH;
+        else if (!(error instanceof session.SessionUnavailable)) throw error;
+      }
+      if (code === null) continue;
+      for (const ws of group) ws.close(code, code === CLOSE.AUTH ? 'Sesion revocada' : 'Token vencido, reconectar');
+    }
   }
 
   async start() {
@@ -192,6 +234,19 @@ class Hub {
       ws.close(CLOSE.AUTH, error.message.slice(0, 100));
       return;
     }
+    // La firma no alcanza: la sesion pudo revocarse (cambio de contraseña, cuenta borrada).
+    try {
+      await this.checkSession(message.token);
+    } catch (error) {
+      if (error instanceof session.SessionRevoked) {
+        ws.close(CLOSE.AUTH, 'Sesion revocada');
+        return;
+      }
+      if (!(error instanceof session.SessionUnavailable)) throw error;
+      console.warn(`[hub] ${roomId}: ${error.message}`);
+      ws.close(CLOSE.TRY_AGAIN, 'No se pudo verificar la sesion, intenta de nuevo');
+      return;
+    }
 
     // Contar oyentes y anotarse va con la sala bloqueada: si no, varios que entran a la
     // vez ven todos "hay lugar" y la sala se pasa del tope (aunque vengan por otra copia).
@@ -209,7 +264,7 @@ class Hub {
       });
     } catch (error) {
       console.warn(`[hub] ${roomId}: no se pudo entrar: ${error.message}`);
-      ws.close(1013, 'Sala ocupada, intenta de nuevo');
+      ws.close(CLOSE.TRY_AGAIN, 'Sala ocupada, intenta de nuevo');
       return;
     }
     if (verdict === 'not_found') {
@@ -223,6 +278,7 @@ class Hub {
 
     clearTimeout(authTimer);
     ws.user = user;
+    ws.token = message.token;
     ws.connId = connId;
     if (!this.rooms.has(roomId)) this.rooms.set(roomId, new Set());
     this.rooms.get(roomId).add(ws);
@@ -241,6 +297,7 @@ class Hub {
   /** Al apagar: cierra las conexiones (los clientes se reconectan a otra copia). */
   async close() {
     clearInterval(this.heartbeat);
+    clearInterval(this.sessionTimer);
     for (const ws of this.wss.clients) ws.close(1001, 'Servidor reiniciando');
   }
 }

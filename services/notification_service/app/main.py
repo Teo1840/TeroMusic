@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 from app.events import TYPES, parse_event
 
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("notifications")
 
 RETRY_DELAY_SEC = 2

@@ -213,7 +213,7 @@ app.post('/audio/played', express.json({ limit: '4kb' }), async (req, res, next)
     // Aceptada pero sin contar (muy corta o superpuesta con otra): no hay evento.
     if (!verdict.counted) return res.status(200).json({ counted: false, reason: verdict.reason });
     await events.publish(event);
-    console.log(`[events] ${events.TYPE} song_id=${body.song_id} listened_sec=${body.listened_sec} id=${event.id}`);
+    console.log(`[events] ${events.TYPE} song_id=${body.song_id} listened_sec=${body.listened_sec} id=${event.id} cid=${req.get('X-Correlation-Id') || '-'}`);
     return res.status(202).json({ id: event.id, counted: true });
   } catch (error) {
     return next(error);

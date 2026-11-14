@@ -106,7 +106,7 @@ export function SongGrid({ songs, busy, hasMore, loadingMore, onMore, showArtist
     return (
         <>
             <div className={`grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 ${busy ? "opacity-50" : ""}`} aria-busy={busy}>
-                {songs.map((song) => <SongCard key={song.id} song={song} showArtist={showArtist} />)}
+                {songs.map((song) => <SongCard key={song.id} song={song} queue={songs} showArtist={showArtist} />)}
             </div>
             {hasMore && (
                 <div className="mt-6 text-center">

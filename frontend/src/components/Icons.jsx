@@ -111,6 +111,14 @@ export function PlusIcon(props) {
     return <StrokeIcon {...props}><path d="M12 5v14M5 12h14" /></StrokeIcon>;
 }
 
+export function ShuffleIcon(props) {
+    return (
+        <StrokeIcon {...props}>
+            <path d="M3 7h3.5c2 0 3.2.9 4.3 2.6l2.4 4.8c1.1 1.7 2.3 2.6 4.3 2.6H21M3 17h3.5c1.4 0 2.4-.4 3.3-1.3M14.2 8.3c.9-.9 1.9-1.3 3.3-1.3H21M18 4l3 3-3 3M18 14l3 3-3 3" />
+        </StrokeIcon>
+    );
+}
+
 /** Play o pausa según el estado. */
 export function PlaybackIcon({ playing, ...props }) {
     return playing ? <PlayIcon {...props} /> : <PauseIcon {...props} />;

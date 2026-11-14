@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "contracts/events/song.deleted.v1.schema.json",
   "title": "song.deleted.v1",
-  "description": "El artista (o un admin) borró una canción: ya no está en el catálogo ni en las playlists, y sus archivos se borraron de MinIO. Publica: catalog_service. Consume: metrics_service (la saca del top; el historial de reproducciones se conserva) y rooms_service (la saca de la cola y las sugerencias de las salas abiertas; si estaba sonando, pasa a la siguiente).",
+  "description": "El artista (o un admin) borró una canción: ya no está en el catálogo ni en las playlists, y sus archivos se borraron de MinIO. Publica: catalog_service. Consume: metrics_service (la saca del top; el historial de reproducciones se conserva) y rooms_service (la saca de la cola y las sugerencias de las salas abiertas; si estaba sonando, pasa a la siguiente) y notification_service (si la borró un admin, avisa al artista).",
   "type": "object",
   "required": ["song_id", "artist_id", "deleted_by"],
   "additionalProperties": false,

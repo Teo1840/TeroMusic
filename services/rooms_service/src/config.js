@@ -19,6 +19,13 @@ module.exports = {
   catalogUrl: (env.CATALOG_URL || 'http://catalog_service:8000').replace(/\/+$/, ''),
   catalogTimeoutMs: int('CATALOG_TIMEOUT_MS', 3000),
 
+  // user_service: GET /verify dice si la sesion sigue valiendo (no fue revocada).
+  // Vacio = no se consulta (solo la firma y el vencimiento del JWT).
+  userServiceUrl: (env.USER_SERVICE_URL ?? 'http://user_service:8000').replace(/\/+$/, ''),
+  userServiceTimeoutMs: int('USER_SERVICE_TIMEOUT_MS', 3000),
+  // Cada cuanto se vuelve a chequear la sesion de los que ya estan conectados.
+  sessionCheckMs: int('WS_SESSION_CHECK_MS', 60000),
+
   // Una sala sin actividad se borra sola despues de este tiempo.
   roomTtlSec: int('ROOM_TTL_SEC', 24 * 3600),
   defaultMaxListeners: int('ROOM_DEFAULT_MAX_LISTENERS', 50),

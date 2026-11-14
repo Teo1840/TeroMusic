@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import api from "../api/client";
@@ -32,6 +32,8 @@ beforeEach(() => {
     api.put.mockResolvedValue({});
 });
 
+afterEach(() => vi.restoreAllMocks());
+
 describe("cola de playlist", () => {
     it("reproduce en orden, omite canciones no disponibles y termina sin repetir", async () => {
         openPlaylist();
@@ -62,6 +64,32 @@ describe("cola de playlist", () => {
     it.each([{ items: [] }, { items: [songs[1]] }])("deshabilita reproducir si no hay canciones disponibles: $items", async ({ items }) => {
         openPlaylist(items);
         expect((await screen.findByRole("button", { name: "Reproducir playlist" })).disabled).toBe(true);
+    });
+
+    it("en aleatorio mezcla la cola sin mover la actual y al apagarlo vuelve al orden normal", async () => {
+        vi.spyOn(Math, "random").mockReturnValue(0);
+        openPlaylist([songs[0], songs[2], { id: "d", title: "Tercera", status: "PUBLICADO" }]);
+        fireEvent.click(await screen.findByRole("button", { name: "Reproducir playlist" }));
+        expect(screen.getByTestId("audio").dataset.song).toBe("a");
+
+        const shuffleButton = screen.getByRole("button", { name: "Aleatorio" });
+        fireEvent.click(shuffleButton);
+        expect(shuffleButton.getAttribute("aria-pressed")).toBe("true");
+        expect(screen.getByTestId("audio").dataset.song).toBe("a");
+        expect(screen.getByText(/Canción 1 de 3/)).toBeTruthy();
+
+        // Con Math.random en 0 la mezcla de [c, d] queda [d, c].
+        fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
+        expect(screen.getByTestId("audio").dataset.song).toBe("d");
+        fireEvent.click(screen.getByText("Simular fin de audio"));
+        expect(screen.getByTestId("audio").dataset.song).toBe("c");
+        expect(screen.getByText(/Canción 3 de 3/)).toBeTruthy();
+
+        fireEvent.click(shuffleButton);
+        expect(shuffleButton.getAttribute("aria-pressed")).toBe("false");
+        expect(screen.getByText("Canción 2 de 3")).toBeTruthy();
+        fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
+        expect(screen.getByTestId("audio").dataset.song).toBe("d");
     });
 
     it("sigue el orden actualizado sin reiniciar la canción actual", async () => {

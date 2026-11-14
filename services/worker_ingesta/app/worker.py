@@ -99,9 +99,14 @@ async def on_message(message: aio_pika.abc.AbstractIncomingMessage) -> None:
         return
 
     correlation_id = event.get("correlationid") or f"req-{uuid.uuid4().hex[:8]}"
-    log.info("Procesando canción %s", song_id)
+    log.info("Procesando canción %s cid=%s", song_id, correlation_id)
 
+    started = time.monotonic()
     event_type, result_data = await process_with_retries(data)
+    log.info(
+        "Canción %s: %s en %.1f s cid=%s",
+        song_id, event_type, time.monotonic() - started, correlation_id,
+    )
 
     try:
         await publisher.publish(event_type, result_data, f"song/{song_id}", correlation_id)

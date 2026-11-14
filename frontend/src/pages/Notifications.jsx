@@ -21,7 +21,8 @@ const KIND = {
     "user.registered.v1": "Bienvenida",
     "audio.ready.v1": "Canción lista",
     "audio.failed.v1": "Error al procesar",
-    "room.created.v1": "Sala creada"
+    "room.created.v1": "Sala creada",
+    "song.deleted.v1": "Canción borrada"
 };
 
 /** A dónde lleva cada aviso, si tiene algo para abrir. */
@@ -29,6 +30,7 @@ function linkFor(notification) {
     switch (notification.type) {
         case "audio.ready.v1":
         case "audio.failed.v1":
+        case "song.deleted.v1":
             return { to: "/my-songs", label: "Ver mis canciones" };
         case "room.created.v1":
             return notification.resource_id ? { to: `/rooms/${notification.resource_id}`, label: "Entrar a la sala" } : null;

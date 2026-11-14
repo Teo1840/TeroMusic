@@ -15,7 +15,7 @@ from .routers.profile import router as profile_router
 from .security import ADMIN_EMAILS
 
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("user.main")
 
 Base.metadata.create_all(bind=engine)
